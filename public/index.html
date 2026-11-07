@@ -291,6 +291,24 @@
       <button class="primary" onclick="closeGameResultOverlay()">OK</button>
     </div>
   </div>
+  <div class="card">
+    <h2>PGN Import / Replay</h2>
+    <textarea id="pgnInput" placeholder="Paste PGN here..." style="width:100%;min-height:100px;background:var(--bg);color:var(--text,inherit);border:1px solid #334155;border-radius:8px;padding:8px;font-family:monospace;font-size:12px;"></textarea>
+    <div class="row" style="margin-top:8px;">
+      <button class="primary" onclick="loadPgnReplay()">Load PGN</button>
+      <button class="ghost" onclick="replayFirst()">⏮ First</button>
+      <button class="ghost" onclick="replayPrev()">◀ Prev</button>
+      <button class="ghost" onclick="replayNext()">Next ▶</button>
+      <button class="ghost" onclick="replayLast()">Last ⏭</button>
+    </div>
+    <div class="msg" id="pgnMsg"></div>
+    <div class="board-wrap" style="max-width:min(420px,100%);">
+      <div class="rank-labels" id="replayRankLabels"></div>
+      <div id="replayBoard" class="chess-board"></div>
+    </div>
+    <div class="file-labels" id="replayFileLabels" style="max-width:min(400px,100%);"></div>
+    <div id="replayMoveList" class="hint" style="margin-top:8px;max-height:100px;overflow:auto;"></div>
+  </div>
 </main>
 
 <script>
@@ -1126,6 +1144,78 @@ function animatePieceSlide(from,to,color,pieceType,isCapture){
     setTimeout(()=>{ img.remove(); if(targetPiece){ targetPiece.style.opacity=''; targetPiece.style.transition=''; } resolve(); },200);
   });
 }
+
+
+// --- PGN import / replay ---
+let replayPositions = [];
+let replayMoves = [];
+let replayIndex = 0;
+async function loadPgnReplay(){
+  const msg=$('pgnMsg'); if(msg){ msg.className='msg'; msg.textContent=''; }
+  const text = ($('pgnInput')||{}).value || '';
+  if(!text.trim()){ if(msg){ msg.className='msg err'; msg.textContent='Paste a PGN first.'; } return; }
+  try {
+    const C = await ensureChess();
+    const checker = new C();
+    const loaded = checker.loadPgn(text, { sloppy: true });
+    if (!loaded) { throw new Error('Could not parse PGN'); }
+    const hist = checker.history({ verbose: true });
+    const tmp = new C();
+    replayPositions = [tmp.fen()];
+    replayMoves = [];
+    for (const m of hist) { tmp.move(m.san); replayMoves.push(m.san); replayPositions.push(tmp.fen()); }
+    replayIndex = 0;
+    if (msg){ msg.className='msg ok'; msg.textContent = 'Loaded ' + replayMoves.length + ' moves. Use Prev/Next.'; }
+    renderReplayBoard();
+    updateReplayMoveList();
+  } catch(e){
+    if(msg){ msg.className='msg err'; msg.textContent = e.message || 'Invalid PGN'; }
+  }
+}
+async function renderReplayBoard(){
+  const container=$('replayBoard'); if(!container) return;
+  const C = await ensureChess();
+  const fen = replayPositions.length ? replayPositions[replayIndex] : 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
+  const chess = new C(fen);
+  const board = chess.board();
+  let lastMove = null;
+  if (replayIndex > 0) {
+    try {
+      const tmp = new C();
+      for (let i=0;i<replayIndex;i++){ const m = tmp.move(replayMoves[i]); if (i===replayIndex-1) lastMove=m; }
+    } catch(e){}
+  }
+  const lastSquares = new Set(lastMove ? [lastMove.from, lastMove.to] : []);
+  let html='';
+  for (let r=0;r<8;r++){
+    for (let c=0;c<8;c++){
+      const dark=(r+c)%2===1;
+      const square=String.fromCharCode(97+c)+(8-r);
+      const piece=board[r][c];
+      const classes=['square', dark?'dark':'light'];
+      if (lastSquares.has(square)) classes.push('last-move');
+      const pieceImg = piece ? `<img class="piece" alt="${piece.color}${piece.type}" src="https://raw.githubusercontent.com/lichess-org/lila/master/public/piece/cburnett/${piece.color}${piece.type.toUpperCase()}.svg">` : '';
+      html += `<div class="${classes.join(' ')}" data-square="${square}">${pieceImg}</div>`;
+    }
+  }
+  container.innerHTML=html;
+  // labels
+  const rl=$('replayRankLabels'), fl=$('replayFileLabels');
+  if (rl) rl.innerHTML = [8,7,6,5,4,3,2,1].map(x=>`<span>${x}</span>`).join('');
+  if (fl) fl.innerHTML = ['a','b','c','d','e','f','g','h'].map(x=>`<span>${x}</span>`).join('');
+}
+function updateReplayMoveList(){
+  const el=$('replayMoveList'); if(!el) return;
+  if(!replayMoves.length){ el.textContent=''; return; }
+  el.innerHTML = replayMoves.map((m,i)=>{
+    const cls = (i === replayIndex-1) ? 'style="font-weight:bold;color:var(--accent);"' : '';
+    return `<span ${cls}>${Math.floor(i/2)+1}${i%2===0?'.':'...'} ${m}</span> `;
+  }).join('');
+}
+function replayFirst(){ replayIndex=0; renderReplayBoard(); updateReplayMoveList(); }
+function replayPrev(){ if(replayIndex>0){ replayIndex--; renderReplayBoard(); updateReplayMoveList(); } }
+function replayNext(){ if(replayIndex < replayPositions.length-1){ replayIndex++; renderReplayBoard(); updateReplayMoveList(); } }
+function replayLast(){ replayIndex = Math.max(0,replayPositions.length-1); renderReplayBoard(); updateReplayMoveList(); }
 
 // init
 if(adminToken){ $('adminLogin').style.display='none'; $('adminPanel').classList.add('open'); }
