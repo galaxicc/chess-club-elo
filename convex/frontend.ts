@@ -1439,16 +1439,20 @@ function renderAiBoard(){
   const b = chess.board();
   const sel = aiGame.selectedSquare;
   const legal = aiGame.legalTargets || new Set();
+  const flipped = (aiGame.humanColor === 'b') ^ !!boardFlipped;
+  const files = flipped ? ['h','g','f','e','d','c','b','a'] : ['a','b','c','d','e','f','g','h'];
+  const ranks = flipped ? [1,2,3,4,5,6,7,8] : [8,7,6,5,4,3,2,1];
   let mateZone = new Set();
   if (chess.isCheckmate()) { mateZone = new Set(chess.turn()==='w' ? [1,2,3,4] : [5,6,7,8]); }
   let html='';
-  for(let r=0;r<8;r++){
-    for(let c=0;c<8;c++){
-      const dark=(r+c)%2===1;
-      const square=String.fromCharCode(97+c)+(8-r);
-      const rank = 8-r;
-      const piece=b[r][c];
-      const classes=['square', dark?'dark':'light'];
+  for (const rank of ranks) {
+    for (const file of files) {
+      const square = file + rank;
+      const rowIndex = 8 - rank;
+      const colIndex = file.charCodeAt(0) - 97;
+      const piece = b[rowIndex][colIndex];
+      const dark = (rowIndex + colIndex) % 2 === 1;
+      const classes = ['square', dark?'dark':'light'];
       if (mateZone.has(rank)) classes.push('mate-zone');
       if (sel===square) classes.push('selected');
       if (legal.has(square)) classes.push('legal');
@@ -1458,8 +1462,8 @@ function renderAiBoard(){
   }
   container.innerHTML=html;
   const rl=$('aiRankLabels'), fl=$('aiFileLabels');
-  if (rl) rl.innerHTML = [8,7,6,5,4,3,2,1].map(x=>\`<span>\${x}</span>\`).join('');
-  if (fl) fl.innerHTML = ['a','b','c','d','e','f','g','h'].map(x=>\`<span>\${x}</span>\`).join('');
+  if (rl) rl.innerHTML = (flipped ? [1,2,3,4,5,6,7,8] : [8,7,6,5,4,3,2,1]).map(x=>\`<span>\${x}</span>\`).join('');
+  if (fl) fl.innerHTML = (flipped ? ['h','g','f','e','d','c','b','a'] : ['a','b','c','d','e','f','g','h']).map(x=>\`<span>\${x}</span>\`).join('');
 }
 function handleAiSquareClick(square){
   if(!aiGame || aiGame.thinking) return;
