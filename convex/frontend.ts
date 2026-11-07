@@ -1272,8 +1272,8 @@ async function loadPgnReplay(){
   try {
     const C = await ensureChess();
     const checker = new C();
-    const loaded = checker.loadPgn(text, { sloppy: true });
-    if (!loaded) { throw new Error('Could not parse PGN'); }
+    try { checker.loadPgn(text, { sloppy: true }); } catch (e) { throw new Error('Could not parse PGN'); }
+    if (!checker.history().length) { throw new Error('Could not parse PGN'); }
     const hist = checker.history({ verbose: true });
     const tmp = new C();
     replayPositions = [tmp.fen()];
@@ -1583,7 +1583,8 @@ async function analyzePgn(){
   try {
     const C = await ensureChess();
     const tmp = new C();
-    if (!tmp.loadPgn(input, { sloppy: true })) throw new Error('Could not parse PGN');
+    try { tmp.loadPgn(input, { sloppy: true }); } catch (e) { throw new Error('Could not parse PGN'); }
+  if (!tmp.history().length) throw new Error('Could not parse PGN');
     const hist = tmp.history({ verbose: true });
     if (!hist.length){ if(msg){ msg.className='msg err'; msg.textContent='No moves in PGN.'; } return; }
     const positions = ['rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1'];
@@ -1651,7 +1652,8 @@ async function loadLastGameIntoAnalysis(){
   try {
     const games = await api('/api/games');
     if (games && games.length) {
-      const pgn = await fetch((API||'') + '/api/games/' + games[0]._id + '/pgn').then(r=>r.text());
+      const pick = games.find(g => g.moves && g.moves.length) || games[0];
+      const pgn = await fetch((API||'') + '/api/games/' + pick._id + '/pgn').then(r=>r.text());
       const ta=$('analysisInput'); if(ta) ta.value = pgn;
     }
   } catch(e){ console.error(e); }
