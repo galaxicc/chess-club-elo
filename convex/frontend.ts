@@ -248,6 +248,7 @@ export const HTML = `<!DOCTYPE html>
     <div id="activeGame" style="display:none;margin-top:12px;">
       <div id="gameWaiting" style="display:none; padding:6px 8px; border-radius:8px; background:rgba(250,204,21,0.15); color:#facc15; font-weight:600; margin-bottom:8px;">Waiting for the other player...</div>
       <div id="gameSpectators" class="hint" style="margin-bottom:6px;">Spectators: 0</div>
+      <div id="openingName" class="hint" style="margin-bottom:6px; font-style:italic; color:var(--accent);"></div>
       <div class="row" style="align-items:center;justify-content:space-between;">
         <div style="font-weight:700;" id="gameStatus">Game</div>
         <div class="row">
@@ -739,6 +740,7 @@ async function loadGame(){
     }
     currentGame = newGame;
     const scEl=$('gameSpectators'); if(scEl) scEl.textContent='Spectators: '+(currentGame.spectatorCount||0);
+    const onEl=$('openingName'); if(onEl){ const on=getOpeningName(currentGame.moves||[]); onEl.textContent = on ? ('Opening: '+on) : ''; }
     const START_FEN = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
     if (mySide === 'spectate') {
       const sk = 'specJoined::'+currentGameId;
@@ -774,7 +776,16 @@ async function loadGame(){
 function renderMoveList(){
   const el=$('moveList'); if(!el || !currentGame) return;
   if (currentGame.status === 'cancelled') { el.textContent = 'Aborted — starting position shown.'; return; }
-  el.textContent = (currentGame.moves||[]).join(' ');
+  const moves = currentGame.moves||[];
+  const out = moves.map((m,i)=>{
+    const moveNo = (i%2===0) ? (Math.floor(i/2)+1)+'. ' : '';
+    let col = 'color:inherit;';
+    if (m.includes('#')) col = 'color:#ef4444;font-weight:700;';
+    else if (m.includes('+')) col = 'color:#f59e0b;font-weight:600;';
+    else if (m.includes('x')) col = 'color:#22c55e;';
+    return \`<span style="\${col}">\${moveNo}\${escapeHtml(m)}</span>\`;
+  }).join(' ');
+  el.innerHTML = out || '<span class="hint">No moves yet.</span>';
 }
 function updateGameStatus(){
   const el=$('gameStatus'); if(!el || !currentGame) return;
@@ -1246,6 +1257,46 @@ window.addEventListener('keydown', (e) => {
     if (currentGameId) abortGame();
   }
 });
+
+
+const OPENING_MAP = {
+  "e4 e5": "Open Game",
+  "e4 e5 Nf3 Nc6 Bb5": "Ruy Lopez",
+  "e4 e5 Nf3 Nc6 Bc4": "Italian Game",
+  "e4 e5 Nf3 Nc6 Bc4 Bc5": "Giuoco Piano",
+  "e4 e5 Nf3 Nc6 Bc4 Nf6": "Two Knights Defense",
+  "e4 e5 Nf3 d6": "Philidor Defense",
+  "e4 e5 f4": "King's Gambit",
+  "e4 c5": "Sicilian Defense",
+  "e4 c6": "Caro-Kann Defense",
+  "e4 e6": "French Defense",
+  "e4 d5": "Scandinavian Defense",
+  "d4 d5": "Queen's Pawn Game",
+  "d4 Nf6": "Indian Defense",
+  "d4 d5 c4": "Queen's Gambit",
+  "d4 f5": "Dutch Defense",
+  "c4": "English Opening",
+  "Nf3": "Reti Opening",
+  "g3": "King's Fianchetto",
+  "b3": "Larsen's Opening",
+  "f4": "Bird's Opening"
+};
+function getOpeningName(moves){
+  const list = moves || [];
+  for (let len = Math.min(list.length, 6); len >= 2; len--) {
+    const key = list.slice(0, len).join(' ');
+    if (OPENING_MAP[key]) return OPENING_MAP[key];
+  }
+  if (list.length === 1) {
+    const m = list[0];
+    if (m.startsWith('e4')) return 'King\\'s Pawn Opening';
+    if (m.startsWith('d4')) return 'Queen\\'s Pawn Opening';
+    if (m.startsWith('c4')) return 'English Opening';
+    if (m.startsWith('Nf3')) return 'Reti Opening';
+  }
+  if (list.length >= 2) return 'Developing...';
+  return null;
+}
 
 // init
 if(adminToken){ $('adminLogin').style.display='none'; $('adminPanel').classList.add('open'); }
