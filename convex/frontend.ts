@@ -57,6 +57,17 @@ export const HTML = `<!DOCTYPE html>
   .chess-board { display:grid; grid-template-columns: repeat(8, 1fr); gap:0; width:100%; max-width:min(500px, calc(100vw - 40px)); border:2px solid #334155; user-select:none; }
   .file-labels { display:grid; grid-template-columns:repeat(8,1fr); max-width:min(500px, calc(100vw - 40px)); margin:0 auto 0 24px; font-size:11px; color:var(--muted); text-align:center; }
   .square { aspect-ratio:1; display:flex; align-items:center; justify-content:center; cursor:pointer; font-size:clamp(24px, 7vw, 48px); }
+  .clock-bars { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin:10px 0; }
+  .clock-bar { height:8px; background:rgba(51,65,85,0.5); border-radius:4px; overflow:hidden; }
+  .clock-bar-fill { height:100%; width:50%; background:var(--accent); transition: width .1s linear, background .2s; }
+  .clock-bar-fill.white { background:#f0d9b5; }
+  .clock-bar-fill.black { background:#b58863; }
+  .clock-bar-fill.low { background:var(--warn); }
+  .clock-bar-fill.critical { background:var(--bad); animation: clockPulse .6s infinite; }
+  #clockW.low, #clockB.low { color:var(--warn); }
+  #clockW.critical, #clockB.critical { color:var(--bad); animation: clockBlink .7s infinite; }
+  @keyframes clockPulse { 0%,100% { opacity:1; } 50% { opacity:.55; } }
+  @keyframes clockBlink { 0%,100% { opacity:1; } 50% { opacity:.35; } }
   .confetti-dot { position:fixed; width:8px; height:8px; border-radius:50%; z-index:10000; pointer-events:none; animation: confettiFly 1s ease-out forwards; }
   @keyframes confettiFly { 0% { transform: translate(0,0) scale(1); opacity:1; } 100% { transform: translate(var(--dx), var(--dy)) scale(0.4); opacity:0; } }
   @media (max-width: 480px) {
@@ -259,6 +270,10 @@ export const HTML = `<!DOCTYPE html>
           <span>&nbsp;vs&nbsp;</span>
           <span id="clockB" style="font-family:monospace;font-size:18px;">--:--</span>
         </div>
+      </div>
+      <div class="clock-bars">
+        <div><div class="hint" style="margin-bottom:4px;">White time</div><div class="clock-bar"><div id="clockBarW" class="clock-bar-fill white"></div></div></div>
+        <div><div class="hint" style="margin-bottom:4px;">Black time</div><div class="clock-bar"><div id="clockBarB" class="clock-bar-fill black"></div></div></div>
       </div>
       <div class="board-wrap">
         <div class="rank-labels" id="rankLabels">
@@ -671,8 +686,13 @@ function updateClocks(){
   const now=Date.now();
   if (currentGame.unlimited) {
     const elW=$('clockW'), elB=$('clockB');
-    if (elW) elW.textContent = '∞';
-    if (elB) elB.textContent = '∞';
+    if (elW) { elW.textContent = '∞'; elW.className = ''; }
+    if (elB) { elB.textContent = '∞'; elB.className = ''; }
+    const bw=$('clockBarW'), bb=$('clockBarB');
+    if (bw) bw.style.width = '100%';
+    if (bb) bb.style.width = '100%';
+    if (bw) bw.className = 'clock-bar-fill white';
+    if (bb) bb.className = 'clock-bar-fill black';
     return;
   }
   let w=currentGame.whiteTimeMs, b=currentGame.blackTimeMs;
@@ -681,8 +701,12 @@ function updateClocks(){
     else b -= (now-currentGame.lastMoveAt);
   }
   const elW=$('clockW'), elB=$('clockB');
-  if(elW) elW.textContent=formatClock(w);
-  if(elB) elB.textContent=formatClock(b);
+  if(elW){ elW.textContent=formatClock(w); elW.className = w<10000?'critical':(w<30000?'low':''); }
+  if(elB){ elB.textContent=formatClock(b); elB.className = b<10000?'critical':(b<30000?'low':''); }
+  const initW = currentGame.initialTimeMs || w, initB = currentGame.initialTimeMs || b;
+  const bw=$('clockBarW'), bb=$('clockBarB');
+  if(bw){ bw.style.width = Math.max(0, Math.min(100, (w/initW)*100)) + '%'; bw.className = 'clock-bar-fill white' + (w<10000?' critical':(w<30000?' low':'')); }
+  if(bb){ bb.style.width = Math.max(0, Math.min(100, (b/initB)*100)) + '%'; bb.className = 'clock-bar-fill black' + (b<10000?' critical':(b<30000?' low':'')); }
   if(currentGame.status==='active' && !claimingTimeout){
     if((currentGame.turn==='w' && w<=0) || (currentGame.turn==='b' && b<=0)){
       claimTimeoutGame();
