@@ -275,6 +275,7 @@
         <button class="primary" onclick="joinGame()">Join / Start clock</button>
         <button class="ghost" onclick="closeGame()">Close game</button>
       </div>
+      <div class="hint" style="margin-top:4px;">Shortcuts: F flip board, M mute/unmute, R resign, A abort, arrows/Home/End for PGN replay.</div>
       <div class="msg" id="gameActionMsg"></div>
       <div id="moveList" class="hint" style="margin-top:8px;max-height:120px;overflow:auto;"></div>
     </div>
@@ -650,6 +651,7 @@ let clockTimer = null;
 let mySide = localStorage.getItem(currentGameId ? 'gameSide::'+currentGameId : 'x') || null;
 let claimingTimeout = false;
 let soundEnabled = localStorage.getItem('soundEnabled') !== 'false';
+let boardFlipped = false;
 const lastMoveCounts = {};
 function toggleSound(){ soundEnabled = !soundEnabled; localStorage.setItem('soundEnabled', soundEnabled); renderTabs(); }
 function getAudio(){ if(!window._audioCtx) window._audioCtx = new (window.AudioContext || window.webkitAudioContext)(); return window._audioCtx; }
@@ -785,7 +787,7 @@ function updateGameStatus(){
     el.textContent = (currentGame.turn==='w' ? 'White' : 'Black') + ' to move';
   }
 }
-function boardOrientation(){ return (mySide === 'b') ? 'b' : 'w'; }
+function boardOrientation(){ let base = (mySide === 'b') ? 'b' : 'w'; if (boardFlipped) base = base === 'b' ? 'w' : 'b'; return base; }
 function renderBoard(){
   const container=$('board'); if(!container || !chess) return;
   const board = chess.board();
@@ -1216,6 +1218,33 @@ function replayFirst(){ replayIndex=0; renderReplayBoard(); updateReplayMoveList
 function replayPrev(){ if(replayIndex>0){ replayIndex--; renderReplayBoard(); updateReplayMoveList(); } }
 function replayNext(){ if(replayIndex < replayPositions.length-1){ replayIndex++; renderReplayBoard(); updateReplayMoveList(); } }
 function replayLast(){ replayIndex = Math.max(0,replayPositions.length-1); renderReplayBoard(); updateReplayMoveList(); }
+
+
+// --- keyboard shortcuts ---
+window.addEventListener('keydown', (e) => {
+  const tag = document.activeElement && document.activeElement.tagName;
+  if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+  if (e.key === 'f' || e.key === 'F') {
+    boardFlipped = !boardFlipped;
+    if (currentGame) renderBoard();
+    e.preventDefault();
+  } else if (e.key === 'm' || e.key === 'M') {
+    toggleSound();
+    e.preventDefault();
+  } else if (e.key === 'ArrowLeft') {
+    if (replayPositions.length) { replayPrev(); e.preventDefault(); }
+  } else if (e.key === 'ArrowRight') {
+    if (replayPositions.length) { replayNext(); e.preventDefault(); }
+  } else if (e.key === 'Home') {
+    if (replayPositions.length) { replayFirst(); e.preventDefault(); }
+  } else if (e.key === 'End') {
+    if (replayPositions.length) { replayLast(); e.preventDefault(); }
+  } else if (e.key === 'r' || e.key === 'R') {
+    if (currentGameId && mySide) resignGame();
+  } else if (e.key === 'a' || e.key === 'A') {
+    if (currentGameId) abortGame();
+  }
+});
 
 // init
 if(adminToken){ $('adminLogin').style.display='none'; $('adminPanel').classList.add('open'); }
