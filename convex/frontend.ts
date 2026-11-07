@@ -355,7 +355,7 @@ export const HTML = `<!DOCTYPE html>
       <select id="aiLevel" style="flex:1;min-width:140px;">
         <option value="beginner">Beginner (random)</option>
         <option value="intermediate">Intermediate (greedy)</option>
-        <option value="difficult">Difficult (Stockfish engine)</option>
+        <option value="difficult">Difficult (JS chess engine)</option>
       </select>
       <button class="primary" onclick="startAiGame()">New AI game</button>
     </div>
@@ -1565,11 +1565,18 @@ async function makeAiMove(){
   if (aiGame.level==='beginner'){
     chosen=moves[Math.floor(Math.random()*moves.length)];
   } else if (aiGame.level==='difficult'){
-    let uci=null;
-    try { uci = await getStockfishMove(chess.fen()); } catch(e){ uci=null; }
-    if (uci && uci.length >= 4) {
-      chosen = moves.find(m => m.from === uci.slice(0,2) && m.to === uci.slice(2,4) && (!uci[4] || m.promotion === uci[4]));
-    }
+    try {
+      const mod = await ensureJsChess();
+      if (mod && mod.Game) {
+        const gameObj = new mod.Game(chess.fen());
+        const result = gameObj.ai({ level: 5 });
+        const entries = result && result.move ? Object.entries(result.move) : [];
+        if (entries.length) {
+          const [from, to] = entries[0];
+          chosen = moves.find(m => m.from === String(from).toLowerCase() && m.to === String(to).toLowerCase());
+        }
+      }
+    } catch(e){ console.error('js-chess-engine failed:', e); }
     if (!chosen) {
       // fallback to greedy intermediate
       let best=-Infinity;
@@ -1862,6 +1869,19 @@ function launchConfettiColors(colors,count){
     setTimeout(()=>{ if(el.parentNode) el.parentNode.removeChild(el); }, 1100);
   }
 }
+
+async function ensureJsChess(){
+  if (window._jsChess) return window._jsChess;
+  try {
+    const mod = await import('https://cdn.jsdelivr.net/npm/js-chess-engine@2.4.6/dist/index.js');
+    window._jsChess = mod;
+    return mod;
+  } catch (e) {
+    console.error('js-chess-engine load failed:', e);
+    return null;
+  }
+}
+
 // init
 if(adminToken){ $('adminLogin').style.display='none'; $('adminPanel').classList.add('open'); }
 applyTheme();
