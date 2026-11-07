@@ -296,6 +296,11 @@ export const HTML = `<!DOCTYPE html>
         <button class="ghost" onclick="closeGame()">Close game</button>
       </div>
       <div class="hint" style="margin-top:4px;">Shortcuts: F flip board, M mute/unmute, R resign, A abort, arrows/Home/End for PGN replay.</div>
+      <div class="row" style="margin-top:8px; align-items:center;">
+        <span class="hint" style="min-width:70px;">Sound</span>
+        <input id="soundVolume" type="range" min="0" max="1" step="0.05" value="0.5" style="flex:1;" oninput="setSoundVolume(this.value)">
+        <span id="soundVolumeLabel" class="hint" style="min-width:40px; text-align:right;">50%</span>
+      </div>
       <div class="msg" id="gameActionMsg"></div>
       <div id="moveList" class="hint" style="margin-top:8px;max-height:120px;overflow:auto;"></div>
     </div>
@@ -672,11 +677,28 @@ let heartbeatTimer = null;
 let mySide = localStorage.getItem(currentGameId ? 'gameSide::'+currentGameId : 'x') || null;
 let claimingTimeout = false;
 let soundEnabled = localStorage.getItem('soundEnabled') !== 'false';
+let soundVolume = parseFloat(localStorage.getItem('soundVolume') || '0.5');
+if (isNaN(soundVolume)) soundVolume = 0.5;
 let boardFlipped = false;
+function applySoundVolumeUI(){
+  const sl=$('soundVolume'), lbl=$('soundVolumeLabel');
+  if (sl) sl.value = soundVolume;
+  if (lbl) lbl.textContent = Math.round(soundVolume*100) + '%';
+  if (soundVolume === 0) soundEnabled = false;
+}
+function setSoundVolume(v){
+  soundVolume = Math.max(0, Math.min(1, parseFloat(v)));
+  localStorage.setItem('soundVolume', soundVolume);
+  if (soundVolume === 0) soundEnabled = false;
+  else soundEnabled = true;
+  localStorage.setItem('soundEnabled', soundEnabled);
+  applySoundVolumeUI();
+  renderTabs();
+}
 const lastMoveCounts = {};
 function toggleSound(){ soundEnabled = !soundEnabled; localStorage.setItem('soundEnabled', soundEnabled); renderTabs(); }
 function getAudio(){ if(!window._audioCtx) window._audioCtx = new (window.AudioContext || window.webkitAudioContext)(); return window._audioCtx; }
-function beep(freq,dur,type='sine'){ try { const ctx=getAudio(); if(ctx.state==='suspended') ctx.resume(); const o=ctx.createOscillator(); const g=ctx.createGain(); o.type=type; o.frequency.value=freq; g.gain.setValueAtTime(0.0001,ctx.currentTime); g.gain.exponentialRampToValueAtTime(0.14,ctx.currentTime+0.01); g.gain.exponentialRampToValueAtTime(0.0001,ctx.currentTime+dur); o.connect(g); g.connect(ctx.destination); o.start(); o.stop(ctx.currentTime+dur+0.05); } catch(e){} }
+function beep(freq,dur,type='sine'){ try { const ctx=getAudio(); if(ctx.state==='suspended') ctx.resume(); const o=ctx.createOscillator(); const g=ctx.createGain(); o.type=type; o.frequency.value=freq; g.gain.setValueAtTime(0.0001,ctx.currentTime); g.gain.exponentialRampToValueAtTime(Math.max(0.0001, 0.14*soundVolume), ctx.currentTime+0.01); g.gain.exponentialRampToValueAtTime(0.0001,ctx.currentTime+dur); o.connect(g); g.connect(ctx.destination); o.start(); o.stop(ctx.currentTime+dur+0.05); } catch(e){} }
 function playGameSound(game){ if(!soundEnabled || !game || !game.moves || !game.moves.length) return; const cnt = game.moves.length; const prev = lastMoveCounts[game._id] || 0; lastMoveCounts[game._id] = cnt; if (cnt <= prev) return; const last = game.moves[cnt-1]; if (last.includes('#')) { beep(880,0.15,'square'); setTimeout(()=>beep(1175,0.2,'square'),120); } else if (last.includes('x')) { beep(330,0.1,'sawtooth'); } else if (last.includes('+')) { beep(660,0.1,'triangle'); } else { beep(440,0.07,'sine'); } }
 function updateSoundButton(){}
 
@@ -1342,6 +1364,7 @@ function getOpeningName(moves){
 // init
 if(adminToken){ $('adminLogin').style.display='none'; $('adminPanel').classList.add('open'); }
 applyTheme();
+applySoundVolumeUI();
 refreshAll();
 </script>
 </body>
