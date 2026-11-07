@@ -70,6 +70,8 @@ export const HTML = `<!DOCTYPE html>
   @keyframes clockBlink { 0%,100% { opacity:1; } 50% { opacity:.35; } }
   .confetti-dot { position:fixed; width:8px; height:8px; border-radius:50%; z-index:10000; pointer-events:none; animation: confettiFly 1s ease-out forwards; }
   @keyframes confettiFly { 0% { transform: translate(0,0) scale(1); opacity:1; } 100% { transform: translate(var(--dx), var(--dy)) scale(0.4); opacity:0; } }
+  .chess-board.shake { animation: boardShake .45s ease; }
+  @keyframes boardShake { 0%,100% { transform: translate(0,0); } 20% { transform: translate(-6px,4px); } 40% { transform: translate(6px,-4px); } 60% { transform: translate(-4px,6px); } 80% { transform: translate(4px,-2px); } }
   @media (max-width: 480px) {
     main { padding: 12px; }
     header { padding: 12px; flex-wrap: wrap; }
@@ -1102,7 +1104,9 @@ function showGameResultOverlay(game){
   title.textContent=t;
   detail.textContent = game.result ? 'Result: ' + game.result : (game.status==='cancelled' ? 'No rating change' : '');
   overlay.style.display='flex';
-  launchConfetti(game.result);
+  const mate = !!(game.moves && game.moves.length && /#/.test(game.moves[game.moves.length-1]));
+  if (mate) { const board=$('board'); if (board){ board.classList.remove('shake'); void board.offsetWidth; board.classList.add('shake'); } }
+  launchConfetti(game.result, mate);
 }
 function closeGameResultOverlay(){ const o=$('gameResultOverlay'); if(o) o.style.display='none'; }
 function closeProfile(){ const c=$('profileCard'); if(c) c.style.display='none'; }
@@ -1142,11 +1146,11 @@ function showProfile(id){
   }
   const card=$('profileCard'); if(card){ card.style.display='block'; card.scrollIntoView({behavior:'smooth',block:'nearest'}); }
 }
-function launchConfetti(result){
+function launchConfetti(result, mate=false){
   const colors = result==='1-0' ? ['#facc15','#f97316','#ef4444','#fde68a'] :
                   result==='0-1' ? ['#3b82f6','#8b5cf6','#10b981','#a7f3d0'] :
                   ['#94a3b8','#cbd5e1','#e2e8f0','#64748b'];
-  const count = 60;
+  const count = mate ? 100 : 60;
   for(let i=0;i<count;i++){
     const el=document.createElement('div');
     el.className='confetti-dot';
