@@ -525,7 +525,7 @@ async function loadPlayers(){
 function renderChips(){
   const el = $('playersChips');
   if(!playersCache.length){ el.innerHTML = '<span class="hint">No players yet (admin creates them).</span>'; return; }
-  el.innerHTML = playersCache.map(p=>`<span class="chip" title="${p.rating}" onclick="insertName('${p.name}')">${p.name}</span>`).join('');
+  el.innerHTML = playersCache.map(p=>`<span class="chip" title="${p.rating}" data-name="${escapeHtml(p.name)}" onclick="insertNameFromChip(this)">${escapeHtml(p.name)}</span>`).join('');
   populateDropdowns();
 }
 function populateDropdowns(){
@@ -569,8 +569,8 @@ async function submitDropdownResult(e){
     await refreshAll();
   } catch(err){ msg.className='msg err'; msg.textContent = err.message; }
 }
+function insertNameFromChip(el){ insertName(el.dataset.name); }
 function insertName(n){
-  const inp=$('resultInput');
   const v=inp.value.trim();
   if(!v){ inp.value = n+'-'; inp.focus(); }
   else if(v.indexOf(' ')>-1){ /* already has space */ }
@@ -656,13 +656,16 @@ async function createUser(e){
     await refreshAll();
   } catch(err){ msg.className='msg err'; msg.textContent = err.message; }
 }
+function deleteUserFromBtn(el){ deleteUser(el.dataset.id, el.dataset.name); }
+function resetPlayerEloFromBtn(el){ resetPlayerElo(el.dataset.id, ''); }
 async function deleteUser(id, name){
   if(!confirm('Delete '+name+'?')) return;
   try { await api('/api/groups/'+currentTab+'/players/'+id, { method:'DELETE' }); await refreshAll(); }
   catch(err){ alert(err.message); }
 }
 async function resetPlayerElo(id, name){
-  if(!confirm('Reset ELO for '+name+' to starting rating?')) return;
+  const nm = name || (playersCache.find(p=>String(p._id||p.id)===String(id))||{}).name || '?';
+  if(!confirm('Reset ELO for '+nm+' to starting rating?')) return;
   try { await api('/api/admin/reset-player', { method:'POST', body: JSON.stringify({ group: currentTab, playerId: id }) }); await refreshAll(); }
   catch(err){ alert(err.message); }
 }
@@ -692,8 +695,8 @@ async function renderAdminPlayers(){
       <td>${p.rating}</td>
       <td>${p.games}</td>
       <td>
-        <button class="ghost" style="padding:4px 8px;font-size:12px" onclick="resetPlayerElo('${pid}','${escapeHtml(p.name)}')">Reset ELO</button>
-        <button class="danger" style="padding:4px 8px;font-size:12px" onclick="deleteUser('${pid}','${escapeHtml(p.name)}')">Delete</button>
+        <button class="ghost" style="padding:4px 8px;font-size:12px" data-id="${escapeHtml(String(pid))}" onclick="resetPlayerEloFromBtn(this)">Reset ELO</button>
+        <button class="danger" style="padding:4px 8px;font-size:12px" data-id="${escapeHtml(String(pid))}" data-name="${escapeHtml(p.name)}" onclick="deleteUserFromBtn(this)">Delete</button>
       </td>
     </tr>`;
     }).join('') || '<tr><td colspan="4" class="hint">none</td></tr>';
