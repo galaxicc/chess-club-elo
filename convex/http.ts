@@ -221,6 +221,18 @@ http.route({
         const game = await ctx.runQuery(api.games.get, { gameId: id });
         return json(game, 200, origin);
       }
+      if (parts.length === 4 && parts[3] === "pgn") {
+        const text = await ctx.runQuery(api.games.pgn, { gameId: id });
+        if (!text) return json({ error: "not found" }, 404, origin);
+        return new Response(text, {
+          status: 200,
+          headers: {
+            "Content-Type": "text/plain; charset=utf-8",
+            "Content-Disposition": 'attachment; filename="game-' + id.slice(0, 8) + '.pgn"',
+            ...corsHeaders(origin),
+          },
+        });
+      }
       return json({ error: "not found" }, 404, origin);
     } catch (e: any) {
       return json({ error: errMsg(e) }, 400, origin);

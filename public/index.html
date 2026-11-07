@@ -257,6 +257,7 @@
         <button class="primary" onclick="acceptDrawGame()">Accept draw</button>
         <button class="ghost" onclick="declineDrawGame()">Decline draw</button>
         <button class="ghost" onclick="claimTimeoutGame()">Claim timeout</button>
+        <button class="ghost" onclick="downloadPGN(currentGameId)">Export PGN</button>
         <button class="primary" onclick="joinGame()">Join / Start clock</button>
         <button class="ghost" onclick="closeGame()">Close game</button>
       </div>
@@ -668,11 +669,13 @@ async function loadGamesList(){
       if (g.result) label += ' — ' + g.result;
       const canAbort = g.status === 'pending' || g.status === 'active';
       const abortBtn = canAbort ? `<button class="danger" type="button" style="padding:4px 8px;font-size:12px" onclick="abortGameById('${g._id}')">Abort</button>` : '';
+      const pgnBtn = (g.moves && g.moves.length) ? `<button class="ghost" type="button" style="padding:4px 8px;font-size:12px" onclick="downloadPGN('${g._id}')">PGN</button>` : '';
       return `<div class="row" style="margin-bottom:6px;">
         <span style="flex:1">${escapeHtml(label)}</span>
         <button class="ghost" type="button" onclick="openGameAs('${g._id}','w')">White</button>
         <button class="ghost" type="button" onclick="openGameAs('${g._id}','b')">Black</button>
         <button class="ghost" type="button" onclick="openGameAs('${g._id}','spectate')">View</button>
+        ${pgnBtn}
         ${abortBtn}
       </div>`;
     }).join('') || '<span class="hint">No games yet.</span>';
@@ -958,6 +961,18 @@ function launchConfetti(result){
     setTimeout(()=>{ if(el.parentNode) el.parentNode.removeChild(el); }, 1100);
   }
 }
+
+function downloadPGN(id){
+  if(!id) return;
+  const url = (API || '') + '/api/games/' + id + '/pgn';
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'game-' + String(id).slice(0,8) + '.pgn';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+}
+
 // init
 if(adminToken){ $('adminLogin').style.display='none'; $('adminPanel').classList.add('open'); }
 refreshAll();

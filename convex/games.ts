@@ -106,6 +106,42 @@ export const list = query({
   },
 });
 
+export const pgn = query({
+  args: { gameId: v.id("games") },
+  handler: async (ctx, args) => {
+    const game: any = await ctx.db.get(args.gameId);
+    if (!game) return null;
+    const white = await ctx.db.get(game.whitePlayerId);
+    const black = await ctx.db.get(game.blackPlayerId);
+    const wName = (white && white.name) || "White";
+    const bName = (black && black.name) || "Black";
+    const date = (game.createdAt || new Date().toISOString()).slice(0, 10).replace(/-/g, ".");
+    const result = game.result || "*";
+    const timeControl = game.unlimited ? "-" : Math.round(game.initialTimeMs / 1000) + "+" + Math.round(game.incrementMs / 1000);
+    const lines = [];
+    lines.push('[Event "KFUM Chess Club Online Game"]');
+    lines.push('[Site "KFUM Chess Club"]');
+    lines.push('[Date "' + date + '"]');
+    lines.push('[White "' + wName.replace(/"/g, '\\"') + '"]');
+    lines.push('[Black "' + bName.replace(/"/g, '\\"') + '"]');
+    lines.push('[Result "' + result + '"]');
+    lines.push('[TimeControl "' + timeControl + '"]');
+    lines.push("");
+    // move text
+    const moves = game.moves || [];
+    let body = "";
+    for (let i = 0; i < moves.length; i += 2) {
+      body += (Math.floor(i / 2) + 1) + ". " + moves[i];
+      if (moves[i + 1]) body += " " + moves[i + 1];
+      body += " ";
+    }
+    body = body.trim();
+    if (result && result !== "*") body += (body ? " " : "") + result;
+    lines.push(body || result);
+    return lines.join("\n");
+  },
+});
+
 function opponentSide(side: string) {
   return side === "w" ? "b" : "w";
 }
