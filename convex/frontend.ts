@@ -1553,21 +1553,75 @@ function updateAiStatus(){
 
 // --- PGN analysis (Lichess cloud eval) ---
 const evalCache = {};
+let analysisUsedFallback = false;
 let analysisCancel = false;
 async function fetchCloudEval(fen){
   if (evalCache[fen] != null) return evalCache[fen];
-  const url = 'https://lichess.org/api/cloud-eval?fen=' + encodeURIComponent(fen) + '&multiPv=1';
-  const res = await fetch(url);
-  if (!res.ok) { await new Promise(r=>setTimeout(r, 800)); throw new Error('Cloud eval rate limited/unavailable'); }
-  const data = await res.json();
-  const pv = data && data.pvs && data.pvs[0];
-  let cp = 0;
-  if (pv) {
-    if (pv.mate != null) cp = pv.mate > 0 ? 10000 - Math.abs(pv.mate) : -10000 + Math.abs(pv.mate);
-    else if (pv.cp != null) cp = pv.cp;
+  // try Lichess cloud eval
+  let cp = null;
+  let lastErr = null;
+  for (let attempt=0; attempt<2; attempt++){
+    try {
+      const url = 'https://lichess.org/api/cloud-eval?fen=' + encodeURIComponent(fen) + '&multiPv=1';
+      const res = await fetch(url, { headers: { 'Accept': 'application/json' } });
+      if (!res.ok) { lastErr = new Error('Cloud eval HTTP ' + res.status); await new Promise(r=>setTimeout(r, 900*(attempt+1))); continue; }
+      const data = await res.json();
+      const pv = data && data.pvs && data.pvs[0];
+      if (pv) {
+        if (pv.mate != null) cp = pv.mate > 0 ? 10000 - Math.abs(pv.mate) : -10000 + Math.abs(pv.mate);
+        else if (pv.cp != null) cp = pv.cp;
+      }
+      break;
+    } catch(e){ lastErr = e; await new Promise(r=>setTimeout(r, 900*(attempt+1))); }
+  }
+  if (cp == null) {
+    // fallback: local heuristic evaluation (material + piece-square)
+    cp = heuristicEval(fen);
+    analysisUsedFallback = true;
   }
   evalCache[fen] = cp;
   return cp;
+}
+function heuristicEval(fen){
+  const rows = fen.split(' ')[0].split('/');
+  const side = fen.split(' ')[1] || 'w';
+  const values = { p:100, n:320, b:330, r:500, q:900, k:0 };
+  // very simple piece-square bonus for center/control
+  let score = 0;
+  for (let r=0;r<8;r++){
+    for (let c=0;c<8;c++){
+      const ch = rows[r][c];
+      if (!ch || (ch >= '1' && ch <= '8')) continue;
+      // skip digits handled poorly? rows contain digits counts; need expand FEN
+    }
+  }
+  // expand FEN properly
+  const expanded = [];
+  for (const row of rows){
+    let s = '';
+    for (const ch of row) {
+      if (ch >= '1' && ch <= '8') s += '.'.repeat(Number(ch));
+      else s += ch;
+    }
+    expanded.push(s);
+  }
+  let psq = 0;
+  for (let r=0;r<8;r++){
+    for (let c=0;c<8;c++){
+      const ch = expanded[r][c];
+      if (ch === '.') continue;
+      const white = ch === ch.toUpperCase();
+      const type = ch.toLowerCase();
+      let v = values[type] || 0;
+      // center bonus
+      const centerDist = Math.abs(3.5 - r) + Math.abs(3.5 - c);
+      const bonus = Math.round((7 - centerDist) * 2);
+      v += bonus;
+      score += white ? v : -v;
+    }
+  }
+  // side to move not in score; adjust slight
+  return side === 'w' ? score : -score;
 }
 function cpToPercent(cp){
   if (cp > 9000) return 100;
@@ -1576,6 +1630,7 @@ function cpToPercent(cp){
 }
 async function analyzePgn(){
   analysisCancel = false;
+  analysisUsedFallback = false;
   const msg=$('analysisMsg'), prog=$('analysisProgress'), graph=$('analysisGraph'), movesEl=$('analysisMoves');
   if (msg){ msg.className='msg'; msg.textContent=''; }
   const input = ($('analysisInput')||{}).value||'';
@@ -1614,7 +1669,7 @@ async function analyzePgn(){
       if (prog) prog.textContent = (i+1) + '/' + moves.length + ' moves analyzed';
       await new Promise(res=>setTimeout(res, 350));
     }
-    if (msg){ msg.className='msg ok'; msg.textContent = 'Analysis complete (' + moves.length + ' moves).'; }
+    if (msg){ msg.className='msg ok'; msg.textContent = 'Analysis complete (' + moves.length + ' moves).' + (analysisUsedFallback ? ' (used local heuristic eval; cloud eval unavailable)' : ''); }
     renderAnalysisMoves(moves, moveClasses, evalPoints, movesEl, colors);
   } catch(e){
     if (msg){ msg.className='msg err'; msg.textContent = e.message || 'Analysis failed'; }
