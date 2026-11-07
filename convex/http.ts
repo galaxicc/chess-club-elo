@@ -156,6 +156,142 @@ http.route({
   }),
 });
 
+// Online games
+async function resolvePlayerId(ctx: any, group: string, name: string) {
+  const players = await ctx.runQuery(api.players.list, { group });
+  const p = (players || []).find((x: any) => String(x.name).toLowerCase() === String(name).toLowerCase());
+  if (!p) throw new Error("player not found: " + name);
+  return p._id;
+}
+
+http.route({
+  path: "/api/games",
+  method: "GET",
+  handler: httpAction(async (ctx, request) => {
+    const origin = request.headers.get("Origin");
+    try {
+      const games = await ctx.runQuery(api.games.list, {});
+      return json(games, 200, origin);
+    } catch (e: any) {
+      return json({ error: errMsg(e) }, 400, origin);
+    }
+  }),
+});
+http.route({
+  path: "/api/games",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    const origin = request.headers.get("Origin");
+    try {
+      const body = await request.json();
+      const group = body.group || "1";
+      const whiteId = await resolvePlayerId(ctx, group, body.whiteName);
+      const blackId = await resolvePlayerId(ctx, group, body.blackName);
+      const game = await ctx.runMutation(api.games.create, {
+        whitePlayerId: whiteId,
+        blackPlayerId: blackId,
+        group,
+        initialSeconds: (() => { const t = body.timeSeconds == null ? 300 : Number(body.timeSeconds); return Number.isFinite(t) ? t : 300; })(),
+        incrementSeconds: Number(body.incrementSeconds || 0),
+        unlimited: body.timeSeconds != null && Number(body.timeSeconds) === 0,
+        creatorSide: body.creatorSide || "w",
+      });
+      return json(game, 200, origin);
+    } catch (e: any) {
+      return json({ error: errMsg(e) }, 400, origin);
+    }
+  }),
+});
+http.route({
+  path: "/api/games",
+  method: "OPTIONS",
+  handler: httpAction(async (_, request) => new Response(null, { status: 204, headers: corsHeaders(request.headers.get("Origin")) })),
+});
+
+http.route({
+  pathPrefix: "/api/games/",
+  method: "GET",
+  handler: httpAction(async (ctx, request) => {
+    const origin = request.headers.get("Origin");
+    try {
+      const parts = new URL(request.url).pathname.split("/").filter(Boolean);
+      // api games {id} ...
+      const id = parts[2];
+      if (parts.length === 3) {
+        const game = await ctx.runQuery(api.games.get, { gameId: id });
+        return json(game, 200, origin);
+      }
+      return json({ error: "not found" }, 404, origin);
+    } catch (e: any) {
+      return json({ error: errMsg(e) }, 400, origin);
+    }
+  }),
+});
+
+function gameParts(request: Request) {
+  const url = new URL(request.url);
+  const parts = url.pathname.split("/").filter(Boolean);
+  // api games {id} {action}
+  return { id: parts[2], action: parts[3] || "", parts, origin: request.headers.get("Origin"), url };
+}
+
+http.route({
+  pathPrefix: "/api/games/",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    const { id, action, origin } = gameParts(request);
+    try {
+      const body = await request.json().catch(() => ({}));
+      if (action === "join") {
+        const res = await ctx.runMutation(api.games.join, { gameId: id, side: body.side });
+        return json(res, 200, origin);
+      }
+      if (action === "move") {
+        const res = await ctx.runMutation(api.games.makeMove, {
+          gameId: id,
+          side: body.side,
+          from: body.from,
+          to: body.to,
+          promotion: body.promotion,
+        });
+        return json(res, 200, origin);
+      }
+      if (action === "abort") {
+        const res = await ctx.runMutation(api.games.abort, { gameId: id });
+        return json(res, 200, origin);
+      }
+      if (action === "resign") {
+        const res = await ctx.runMutation(api.games.resign, { gameId: id, side: body.side });
+        return json(res, 200, origin);
+      }
+      if (action === "draw-offer") {
+        const res = await ctx.runMutation(api.games.offerDraw, { gameId: id, side: body.side });
+        return json(res, 200, origin);
+      }
+      if (action === "draw-accept") {
+        const res = await ctx.runMutation(api.games.acceptDraw, { gameId: id, side: body.side });
+        return json(res, 200, origin);
+      }
+      if (action === "draw-decline") {
+        const res = await ctx.runMutation(api.games.declineDraw, { gameId: id, side: body.side });
+        return json(res, 200, origin);
+      }
+      if (action === "timeout") {
+        const res = await ctx.runMutation(api.games.claimTimeout, { gameId: id });
+        return json(res, 200, origin);
+      }
+      return json({ error: "not found" }, 404, origin);
+    } catch (e: any) {
+      return json({ error: errMsg(e) }, 400, origin);
+    }
+  }),
+});
+http.route({
+  pathPrefix: "/api/games/",
+  method: "OPTIONS",
+  handler: httpAction(async (_, request) => new Response(null, { status: 204, headers: corsHeaders(request.headers.get("Origin")) })),
+});
+
 // Tab names
 http.route({
   path: "/api/tab-names",

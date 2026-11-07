@@ -10,6 +10,7 @@
 
 import type * as admin from "../admin.js";
 import type * as frontend from "../frontend.js";
+import type * as games from "../games.js";
 import type * as http from "../http.js";
 import type * as lib from "../lib.js";
 import type * as matches from "../matches.js";
@@ -25,6 +26,7 @@ import type {
 declare const fullApi: ApiFromModules<{
   admin: typeof admin;
   frontend: typeof frontend;
+  games: typeof games;
   http: typeof http;
   lib: typeof lib;
   matches: typeof matches;

@@ -44,6 +44,30 @@
   .admin-bar .logged { color:var(--good); font-size:13px; }
   .scroll { max-height:320px; overflow:auto; }
   .hint { font-size:12px; color:var(--muted); }
+  .board-wrap { display:flex; align-items:stretch; max-width:min(540px, 100%); margin:12px auto 4px; }
+  .rank-labels { display:grid; grid-template-rows:repeat(8,1fr); width:20px; font-size:11px; color:var(--muted); text-align:center; margin-right:4px; flex-shrink:0; }
+  .chess-board { display:grid; grid-template-columns: repeat(8, 1fr); gap:0; width:100%; max-width:min(500px, calc(100vw - 40px)); border:2px solid #334155; user-select:none; }
+  .file-labels { display:grid; grid-template-columns:repeat(8,1fr); max-width:min(500px, calc(100vw - 40px)); margin:0 auto 0 24px; font-size:11px; color:var(--muted); text-align:center; }
+  .square { aspect-ratio:1; display:flex; align-items:center; justify-content:center; cursor:pointer; font-size:clamp(24px, 7vw, 48px); }
+  .confetti-dot { position:fixed; width:8px; height:8px; border-radius:50%; z-index:10000; pointer-events:none; animation: confettiFly 1s ease-out forwards; }
+  @keyframes confettiFly { 0% { transform: translate(0,0) scale(1); opacity:1; } 100% { transform: translate(var(--dx), var(--dy)) scale(0.4); opacity:0; } }
+  @media (max-width: 480px) {
+    main { padding: 12px; }
+    header { padding: 12px; flex-wrap: wrap; }
+    header h1 { font-size: 16px; }
+    .row { flex-direction: column; }
+    .row > input, .row > select, .row > button { width: 100%; }
+    .board-wrap { margin: 8px auto 2px; }
+    .chess-board { max-width: calc(100vw - 32px); }
+    .file-labels { max-width: calc(100vw - 32px); margin-left: 24px; }
+  }
+  .square.light { background:#f0d9b5; }
+  .square.dark { background:#b58863; }
+  .square.selected { outline:3px solid #facc15; }
+  .square.last-move { background:#cdd26a; }
+  .square.legal::after { content:''; width:12px; height:12px; border-radius:50%; background:rgba(0,0,0,0.25); }
+  .square.legal-capture { box-shadow: inset 0 0 0 4px rgba(239,68,68,0.5); }
+  .piece { width:82%; height:82%; pointer-events:none; }
   .players-list { display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; }
   .welcome-name { font-weight:800; font-size:20px; background: linear-gradient(90deg,#ff595e,#ffca3a,#8ac926,#1982c4,#6a4c93,#ff595e); background-size:300% 300%; -webkit-background-clip:text; background-clip:text; color:transparent; animation: rainbowText 3s linear infinite; }
   .star { display:inline-block; margin:0 2px; animation: twinkle 1.4s ease-in-out infinite alternate; }
@@ -179,6 +203,79 @@
       </div>
     </div>
   </div>
+  <div class="card">
+    <h2>Play Online Chess</h2>
+    <div id="gameCreate">
+      <form class="row" onsubmit="createGame(event)">
+        <select id="gameWhite" style="flex:1;min-width:120px"></select>
+        <select id="gameBlack" style="flex:1;min-width:120px"></select>
+        <select id="gameTime" style="flex:1;min-width:100px">
+          <option value="0">No clock</option>
+          <option value="180">3+0</option>
+          <option value="300" selected>5+0</option>
+          <option value="600">10+0</option>
+          <option value="900">15+0</option>
+        </select>
+        <select id="gameInc" style="flex:1;min-width:90px">
+          <option value="0" selected>+0</option>
+          <option value="2">+2</option>
+          <option value="5">+5</option>
+          <option value="10">+10</option>
+        </select>
+        <select id="gameColor" style="flex:1;min-width:90px">
+          <option value="w">I play White</option>
+          <option value="b">I play Black</option>
+        </select>
+        <button class="primary" type="submit">Start game</button>
+      </form>
+      <div class="msg" id="gameCreateMsg"></div>
+      <div id="gameQr" style="margin-top:8px;"></div>
+    </div>
+    <div id="activeGame" style="display:none;margin-top:12px;">
+      <div id="gameWaiting" style="display:none; padding:6px 8px; border-radius:8px; background:rgba(250,204,21,0.15); color:#facc15; font-weight:600; margin-bottom:8px;">Waiting for the other player...</div>
+      <div class="row" style="align-items:center;justify-content:space-between;">
+        <div style="font-weight:700;" id="gameStatus">Game</div>
+        <div class="row">
+          <span id="clockW" style="font-family:monospace;font-size:18px;">--:--</span>
+          <span>&nbsp;vs&nbsp;</span>
+          <span id="clockB" style="font-family:monospace;font-size:18px;">--:--</span>
+        </div>
+      </div>
+      <div class="board-wrap">
+        <div class="rank-labels" id="rankLabels">
+          <span>8</span><span>7</span><span>6</span><span>5</span><span>4</span><span>3</span><span>2</span><span>1</span>
+        </div>
+        <div id="board" class="chess-board"></div>
+      </div>
+      <div class="file-labels" id="fileLabels">
+        <span>a</span><span>b</span><span>c</span><span>d</span><span>e</span><span>f</span><span>g</span><span>h</span>
+      </div>
+      <div class="row" style="margin-top:8px;">
+        <button class="ghost" onclick="abortGame()">Abort</button>
+        <button class="danger" onclick="resignGame()">Resign</button>
+        <button class="ghost" onclick="offerDrawGame()">Offer draw</button>
+        <button class="primary" onclick="acceptDrawGame()">Accept draw</button>
+        <button class="ghost" onclick="declineDrawGame()">Decline draw</button>
+        <button class="ghost" onclick="claimTimeoutGame()">Claim timeout</button>
+        <button class="primary" onclick="joinGame()">Join / Start clock</button>
+        <button class="ghost" onclick="closeGame()">Close game</button>
+      </div>
+      <div class="msg" id="gameActionMsg"></div>
+      <div id="moveList" class="hint" style="margin-top:8px;max-height:120px;overflow:auto;"></div>
+    </div>
+    <div style="margin-top:12px;">
+      <h3 style="font-size:14px;margin:0 0 8px;">Recent games</h3>
+      <div id="gamesList" class="scroll"></div>
+    </div>
+  </div>
+  <div id="gameResultOverlay" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.55); z-index:9999; align-items:center; justify-content:center;">
+    <div style="background:var(--card); padding:24px 32px; border-radius:16px; text-align:center; max-width:320px; box-shadow:0 20px 40px rgba(0,0,0,0.4);">
+      <div id="gameResultTitle" style="font-size:24px; font-weight:800; margin-bottom:8px;"></div>
+      <div id="gameResultDetail" style="color:var(--muted); margin-bottom:12px;"></div>
+      <div id="confettiArea" style="position:relative; height:0;"></div>
+      <button class="primary" onclick="closeGameResultOverlay()">OK</button>
+    </div>
+  </div>
 </main>
 
 <script>
@@ -226,6 +323,7 @@ function renderTabs(){
     const active = currentTab === g;
     html += `<button class="tab ${active?'active':''}" data-tab="${g}" onclick="switchTab('${g}')">${escapeHtml(name)}</button>`;
   }
+  html += `<button class="ghost" id="soundToggleBtn" onclick="toggleSound()">${soundEnabled ? 'Sound: On' : 'Sound: Off'}</button>`;
   html += '<button class="ghost" onclick="refreshAll()">Refresh</button>';
   bar.innerHTML = html;
 }
@@ -309,6 +407,7 @@ async function setMotd(e){
 }
 async function refreshAll(){
   await Promise.all([loadPlayers(), loadStats(), loadMatches(), loadMotd(), loadLatestRegistered(), loadTabNames()]);
+  loadGamesList();
   renderAdminPlayers();
   renderTabRename();
 }
@@ -317,6 +416,7 @@ let playersCache = [];
 async function loadPlayers(){
   playersCache = await api('/api/groups/'+currentTab+'/players');
   renderChips();
+  populateGameDropdowns();
 }
 
 function renderChips(){
@@ -486,6 +586,378 @@ async function renderAdminPlayers(){
   } catch(e){ /* maybe token invalid */ }
 }
 
+
+// --- Online play (chess) ---
+const PIECE_GLYPH = {
+  w: { p:'♙', n:'♘', b:'♗', r:'♖', q:'♕', k:'♔' },
+  b: { p:'♟', n:'♞', b:'♝', r:'♜', q:'♛', k:'♚' }
+};
+let ChessCtor = null;
+async function ensureChess(){ if(!ChessCtor){ const m = await import('https://esm.sh/chess.js@1.4.0'); ChessCtor = m.Chess; } return ChessCtor; }
+let currentGameId = localStorage.getItem('currentGameId') || null;
+let currentGame = null;
+let chess = null;
+let pointerStartSquare = null;
+let pointerMoved = false;
+let selectedSquare = null;
+let legalTargets = new Set();
+let gamePollTimer = null;
+let clockTimer = null;
+let mySide = localStorage.getItem(currentGameId ? 'gameSide::'+currentGameId : 'x') || null;
+let claimingTimeout = false;
+let soundEnabled = localStorage.getItem('soundEnabled') !== 'false';
+const lastMoveCounts = {};
+function toggleSound(){ soundEnabled = !soundEnabled; localStorage.setItem('soundEnabled', soundEnabled); renderTabs(); }
+function getAudio(){ if(!window._audioCtx) window._audioCtx = new (window.AudioContext || window.webkitAudioContext)(); return window._audioCtx; }
+function beep(freq,dur,type='sine'){ try { const ctx=getAudio(); if(ctx.state==='suspended') ctx.resume(); const o=ctx.createOscillator(); const g=ctx.createGain(); o.type=type; o.frequency.value=freq; g.gain.setValueAtTime(0.0001,ctx.currentTime); g.gain.exponentialRampToValueAtTime(0.14,ctx.currentTime+0.01); g.gain.exponentialRampToValueAtTime(0.0001,ctx.currentTime+dur); o.connect(g); g.connect(ctx.destination); o.start(); o.stop(ctx.currentTime+dur+0.05); } catch(e){} }
+function playGameSound(game){ if(!soundEnabled || !game || !game.moves || !game.moves.length) return; const cnt = game.moves.length; const prev = lastMoveCounts[game._id] || 0; lastMoveCounts[game._id] = cnt; if (cnt <= prev) return; const last = game.moves[cnt-1]; if (last.includes('#')) { beep(880,0.15,'square'); setTimeout(()=>beep(1175,0.2,'square'),120); } else if (last.includes('x')) { beep(330,0.1,'sawtooth'); } else if (last.includes('+')) { beep(660,0.1,'triangle'); } else { beep(440,0.07,'sine'); } }
+function updateSoundButton(){}
+
+function formatClock(ms){ if(ms<0) ms=0; const total=Math.floor(ms/1000); const m=Math.floor(total/60); const s=total%60; return m+":"+String(s).padStart(2,'0'); }
+function updateClocks(){
+  if(!currentGame) return;
+  const now=Date.now();
+  if (currentGame.unlimited) {
+    const elW=$('clockW'), elB=$('clockB');
+    if (elW) elW.textContent = '∞';
+    if (elB) elB.textContent = '∞';
+    return;
+  }
+  let w=currentGame.whiteTimeMs, b=currentGame.blackTimeMs;
+  if(currentGame.status==='active'){
+    if(currentGame.turn==='w') w -= (now-currentGame.lastMoveAt);
+    else b -= (now-currentGame.lastMoveAt);
+  }
+  const elW=$('clockW'), elB=$('clockB');
+  if(elW) elW.textContent=formatClock(w);
+  if(elB) elB.textContent=formatClock(b);
+  if(currentGame.status==='active' && !claimingTimeout){
+    if((currentGame.turn==='w' && w<=0) || (currentGame.turn==='b' && b<=0)){
+      claimTimeoutGame();
+    }
+  }
+}
+async function claimTimeoutGame(){
+  if(!currentGameId||claimingTimeout) return;
+  if(currentGame && currentGame.unlimited) return;
+  claimingTimeout=true;
+  try { await api('/api/games/'+currentGameId+'/timeout', { method:'POST' }); await loadGame(); }
+  catch(e){ console.error(e); }
+  finally { claimingTimeout=false; }
+}
+function stopPolling(){ if(gamePollTimer) clearInterval(gamePollTimer); if(clockTimer) clearInterval(clockTimer); gamePollTimer=null; clockTimer=null; }
+function startPolling(){
+  stopPolling();
+  gamePollTimer = setInterval(async ()=>{ if(currentGameId){ await loadGame(); } }, 1000);
+  clockTimer = setInterval(updateClocks, 100);
+}
+function populateGameDropdowns(){
+  const w=$('gameWhite'), b=$('gameBlack');
+  if(!w||!b) return;
+  if(!playersCache.length){ w.innerHTML='<option value="">No players</option>'; b.innerHTML='<option value="">No players</option>'; return; }
+  const opts = playersCache.map(p=>`<option value="${escapeHtml(p.name)}">${escapeHtml(p.name)}</option>`).join('');
+  w.innerHTML=opts; b.innerHTML=opts;
+  if (playersCache.length>1) b.value = playersCache[1].name;
+}
+async function loadGamesList(){
+  const el=$('gamesList'); if(!el) return;
+  try {
+    const games = await api('/api/games');
+    el.innerHTML = (games||[]).slice(0,15).map(g=>{
+      let label = g._id.slice(0,8) + ' — ' + g.status;
+      if (g.result) label += ' — ' + g.result;
+      const canAbort = g.status === 'pending' || g.status === 'active';
+      const abortBtn = canAbort ? `<button class="danger" type="button" style="padding:4px 8px;font-size:12px" onclick="abortGameById('${g._id}')">Abort</button>` : '';
+      return `<div class="row" style="margin-bottom:6px;">
+        <span style="flex:1">${escapeHtml(label)}</span>
+        <button class="ghost" type="button" onclick="openGameAs('${g._id}','w')">White</button>
+        <button class="ghost" type="button" onclick="openGameAs('${g._id}','b')">Black</button>
+        <button class="ghost" type="button" onclick="openGameAs('${g._id}','spectate')">View</button>
+        ${abortBtn}
+      </div>`;
+    }).join('') || '<span class="hint">No games yet.</span>';
+  } catch(e){ el.innerHTML = '<span class="hint">'+escapeHtml(e.message)+'</span>'; }
+}
+async function loadGame(){
+  if(!currentGameId) return;
+  try {
+    currentGame = await api('/api/games/'+currentGameId);
+    const C = await ensureChess();
+    chess = new C(currentGame.fen);
+    const active = $('activeGame');
+    if(active) active.style.display='block';
+    const wait = $('gameWaiting');
+    if(wait){
+      if(currentGame.status==='pending'){
+        const wj = currentGame.whiteJoined ? 'White joined' : 'Waiting for White';
+        const bj = currentGame.blackJoined ? 'Black joined' : 'Waiting for Black';
+        wait.style.display='block';
+        wait.textContent = 'Waiting for the other player... (' + wj + ', ' + bj + ')';
+      } else {
+        wait.style.display='none';
+      }
+    }
+    renderBoard();
+    updateGameStatus();
+    playGameSound(currentGame);
+    if(currentGame && (currentGame.status==='finished' || currentGame.status==='cancelled')) { showGameResultOverlay(currentGame); }
+    updateClocks();
+    renderMoveList();
+  } catch(e){ console.error(e); }
+}
+function renderMoveList(){
+  const el=$('moveList'); if(!el || !currentGame) return;
+  el.textContent = (currentGame.moves||[]).join(' ');
+}
+function updateGameStatus(){
+  const el=$('gameStatus'); if(!el || !currentGame) return;
+  if(currentGame.status==='pending'){
+    el.textContent = 'Pending — waiting for both players to join';
+  } else if(currentGame.status==='finished'){
+    el.textContent = 'Finished: ' + (currentGame.result||'');
+  } else if(currentGame.status==='cancelled'){
+    el.textContent = 'Aborted';
+  } else {
+    el.textContent = (currentGame.turn==='w' ? 'White' : 'Black') + ' to move';
+  }
+}
+function boardOrientation(){ return (mySide === 'b') ? 'b' : 'w'; }
+function renderBoard(){
+  const container=$('board'); if(!container || !chess) return;
+  const board = chess.board();
+  const flipped = boardOrientation() === 'b';
+  const files = flipped ? ['h','g','f','e','d','c','b','a'] : ['a','b','c','d','e','f','g','h'];
+  const ranks = flipped ? [1,2,3,4,5,6,7,8] : [8,7,6,5,4,3,2,1];
+  const hist = chess.history({ verbose: true });
+  const last = hist && hist.length ? hist[hist.length-1] : null;
+  const lastSquares = new Set(last ? [last.from, last.to] : []);
+  let html='';
+  for (const rank of ranks) {
+    for (const file of files) {
+      const square = file + rank;
+      const rowIndex = 8 - rank;
+      const colIndex = file.charCodeAt(0) - 97;
+      const piece = board[rowIndex][colIndex];
+      const dark = (rowIndex + colIndex) % 2 === 1;
+      const classes = ['square', dark?'dark':'light'];
+      if (lastSquares.has(square)) classes.push('last-move');
+      if (selectedSquare===square) classes.push('selected');
+      if (legalTargets.has(square)) classes.push('legal');
+      const pieceImg = piece ? `<img class="piece" alt="${piece.color}${piece.type}" src="https://raw.githubusercontent.com/lichess-org/lila/master/public/piece/cburnett/${piece.color}${piece.type.toUpperCase()}.svg">` : '';
+      html += `<div class="${classes.join(' ')}" data-square="${square}">${pieceImg}</div>`;
+    }
+  }
+  container.innerHTML=html;
+  const rEl=$('rankLabels'), fEl=$('fileLabels');
+  if(rEl) rEl.innerHTML = ranks.map(x=>`<span>${x}</span>`).join('');
+  if(fEl) fEl.innerHTML = files.map(x=>`<span>${x}</span>`).join('');
+}
+function clearSelection(){ selectedSquare=null; legalTargets=new Set(); renderBoard(); }
+function handleSquareSelect(square){
+  if(!chess || !currentGame || currentGame.status!=='active') return;
+  if(!mySide || mySide !== chess.turn()) return;
+  const piece = chess.get(square);
+  if(selectedSquare && selectedSquare!==square){
+    if(legalTargets.has(square)){
+      attemptMove(selectedSquare, square);
+    } else {
+      clearSelection();
+      if(piece && piece.color === chess.turn()){ selectedSquare=square; legalTargets=new Set(chess.moves({square,verbose:true}).map(m=>m.to)); renderBoard(); }
+    }
+    return;
+  }
+  if(piece && piece.color === chess.turn()){
+    selectedSquare = square;
+    legalTargets = new Set(chess.moves({square,verbose:true}).map(m=>m.to));
+    renderBoard();
+  } else {
+    clearSelection();
+  }
+}
+async function attemptMove(from,to){
+  if(!chess || !currentGame) return;
+  const piece = chess.get(from);
+  const local = chess.move({from,to,promotion: (piece && piece.type==='p' && (to[1]==='8'||to[1]==='1')) ? 'q' : undefined});
+  if(!local){ clearSelection(); return; }
+  chess.undo();
+  try {
+    await api('/api/games/'+currentGameId+'/move', { method:'POST', body: JSON.stringify({
+      side: mySide,
+      from,
+      to,
+      promotion: (piece && piece.type==='p' && (to[1]==='8'||to[1]==='1')) ? 'q' : undefined
+    }) });
+    selectedSquare=null; legalTargets=new Set();
+    await loadGame();
+  } catch(err){ alert(err.message); await loadGame(); }
+  clearSelection();
+}
+async function createGame(e){
+  e.preventDefault();
+  const msg=$('gameCreateMsg'); msg.className='msg'; msg.textContent='';
+  const qr=$('gameQr'); if(qr) qr.innerHTML='';
+  const w=$('gameWhite').value, b=$('gameBlack').value;
+  const side = $('gameColor').value;
+  if(!w||!b||w===b){ msg.className='msg err'; msg.textContent='Choose two different players'; return; }
+  try {
+    const g = await api('/api/games', { method:'POST', body: JSON.stringify({
+      whiteName: w,
+      blackName: b,
+      group: currentTab,
+      timeSeconds: Number($('gameTime').value),
+      incrementSeconds: Number($('gameInc').value),
+      creatorSide: side
+    }) });
+    localStorage.setItem('gameSide::'+g._id, side);
+    openGameAs(g._id, side);
+    msg.className='msg ok';
+    const shareUrl = location.origin + '/?game=' + g._id + '&side=' + (side==='w'?'b':'w');
+    msg.textContent='Game created. Share with opponent: ' + shareUrl;
+    const qr = $('gameQr');
+    if (qr) qr.innerHTML = '<img alt="QR code" src="https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=' + encodeURIComponent(shareUrl) + '" style="border:1px solid #334155;border-radius:8px;background:#fff;padding:6px;">';
+    await loadGamesList();
+  } catch(err){ msg.className='msg err'; msg.textContent=err.message; }
+}
+function openGameAs(id, side){
+  currentGameId = id;
+  localStorage.setItem('currentGameId', id);
+  if(side && side!=='spectate'){
+    mySide = side;
+    localStorage.setItem('gameSide::'+id, side);
+  } else {
+    mySide = localStorage.getItem('gameSide::'+id) || null;
+  }
+  (async ()=>{ await loadGame(); startPolling(); })();
+}
+function closeGame(){
+  stopPolling();
+  currentGameId=null; currentGame=null; chess=null; mySide=null;
+  localStorage.removeItem('currentGameId');
+  const ag=$('activeGame'); if(ag) ag.style.display='none';
+}
+async function abortGameById(id){
+  if(!confirm('Abort this game without rating change?')) return;
+  try {
+    await api('/api/games/'+id+'/abort', { method:'POST', body: JSON.stringify({}) });
+    if (currentGameId === id) { currentGameId = null; currentGame = null; chess = null; mySide=null; localStorage.removeItem('currentGameId'); const ag=$('activeGame'); if(ag) ag.style.display='none'; }
+    await loadGamesList();
+  } catch(e){ alert(e.message); }
+}
+async function abortGame(){
+  if(!confirm('Abort game without result?')) return;
+  try {
+    await api('/api/games/'+currentGameId+'/abort', { method:'POST', body: JSON.stringify({}) });
+    await loadGame();
+    await loadGamesList();
+  } catch(e){ alert(e.message); }
+}
+async function joinGame(){
+  if(!currentGameId){ alert('Open a game first'); return; }
+  if(!mySide || (mySide!=='w' && mySide!=='b')){ alert('Choose White or Black view first'); return; }
+  try {
+    await api('/api/games/'+currentGameId+'/join', { method:'POST', body: JSON.stringify({ side: mySide }) });
+    await loadGame();
+  } catch(e){ alert(e.message); }
+}
+async function resignGame(){
+  if(!currentGameId || !mySide){ alert('You are spectating'); return; }
+  if(!confirm('Resign?')) return;
+  try { await api('/api/games/'+currentGameId+'/resign', { method:'POST', body: JSON.stringify({ side: mySide }) }); await loadGame(); }
+  catch(e){ alert(e.message); }
+}
+async function offerDrawGame(){
+  if(!currentGameId || !mySide){ alert('You are spectating'); return; }
+  try { await api('/api/games/'+currentGameId+'/draw-offer', { method:'POST', body: JSON.stringify({ side: mySide }) }); await loadGame(); }
+  catch(e){ alert(e.message); }
+}
+async function acceptDrawGame(){
+  if(!currentGameId || !mySide){ alert('You are spectating'); return; }
+  try { await api('/api/games/'+currentGameId+'/draw-accept', { method:'POST', body: JSON.stringify({ side: mySide }) }); await loadGame(); }
+  catch(e){ alert(e.message); }
+}
+async function declineDrawGame(){
+  if(!currentGameId || !mySide){ alert('You are spectating'); return; }
+  try { await api('/api/games/'+currentGameId+'/draw-decline', { method:'POST', body: JSON.stringify({ side: mySide }) }); await loadGame(); }
+  catch(e){ alert(e.message); }
+}
+
+// pointer events for drag/click
+(function initBoardEvents(){
+  const boardEl = $('board');
+  if(!boardEl) return;
+  boardEl.addEventListener('pointerdown', (e)=>{
+    const sq = e.target && e.target.closest ? e.target.closest('.square') : null;
+    if(!sq) return;
+    pointerStartSquare = sq.dataset.square;
+    pointerMoved = false;
+  });
+  boardEl.addEventListener('pointermove', ()=>{ if(pointerStartSquare) pointerMoved=true; });
+  boardEl.addEventListener('pointerup', (e)=>{
+    const sq = e.target && e.target.closest ? e.target.closest('.square') : null;
+    const upSquare = sq ? sq.dataset.square : null;
+    if(!pointerStartSquare) return;
+    if(upSquare && upSquare !== pointerStartSquare && pointerMoved){
+      attemptMove(pointerStartSquare, upSquare);
+    } else {
+      handleSquareSelect(pointerStartSquare);
+    }
+    pointerStartSquare = null;
+    pointerMoved = false;
+  });
+})();
+
+// open game from query param or last game
+const qp = new URLSearchParams(location.search);
+const qGame = qp.get('game');
+if (qGame) {
+  const side = qp.get('side') === 'b' ? 'b' : (qp.get('side') === 'spectate' ? 'spectate' : 'w');
+  openGameAs(qGame, side);
+} else if (currentGameId) {
+  const side = localStorage.getItem('gameSide::'+currentGameId);
+  mySide = side || mySide;
+  openGameAs(currentGameId, side || 'spectate');
+}
+
+
+// --- game result overlay / confetti ---
+let lastResultKey = null;
+function showGameResultOverlay(game){
+  if(!game) return;
+  const key = game._id + '::' + (game.status||'') + '::' + (game.result||'');
+  if(lastResultKey === key) return;
+  lastResultKey = key;
+  const overlay=$('gameResultOverlay');
+  const title=$('gameResultTitle');
+  const detail=$('gameResultDetail');
+  if(!overlay||!title||!detail) return;
+  let t='Game over';
+  if(game.status==='cancelled') t='Game aborted';
+  else if(game.result==='1-0') t='White wins!';
+  else if(game.result==='0-1') t='Black wins!';
+  else if(game.result==='1/2-1/2') t='Draw!';
+  title.textContent=t;
+  detail.textContent = game.result ? 'Result: ' + game.result : (game.status==='cancelled' ? 'No rating change' : '');
+  overlay.style.display='flex';
+  launchConfetti(game.result);
+}
+function closeGameResultOverlay(){ const o=$('gameResultOverlay'); if(o) o.style.display='none'; }
+function launchConfetti(result){
+  const colors = result==='1-0' ? ['#facc15','#f97316','#ef4444','#fde68a'] :
+                  result==='0-1' ? ['#3b82f6','#8b5cf6','#10b981','#a7f3d0'] :
+                  ['#94a3b8','#cbd5e1','#e2e8f0','#64748b'];
+  const count = 60;
+  for(let i=0;i<count;i++){
+    const el=document.createElement('div');
+    el.className='confetti-dot';
+    el.style.left = (20 + Math.random()*60) + 'vw';
+    el.style.top = (20 + Math.random()*20) + 'vh';
+    el.style.background = colors[Math.floor(Math.random()*colors.length)];
+    el.style.setProperty('--dx', (Math.random()*260 - 130) + 'px');
+    el.style.setProperty('--dy', (-40 - Math.random()*220) + 'px');
+    document.body.appendChild(el);
+    setTimeout(()=>{ if(el.parentNode) el.parentNode.removeChild(el); }, 1100);
+  }
+}
 // init
 if(adminToken){ $('adminLogin').style.display='none'; $('adminPanel').classList.add('open'); }
 refreshAll();

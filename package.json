@@ -10,6 +10,7 @@
     "gen:frontend": "node scripts/gen-frontend.js"
   },
   "dependencies": {
+    "chess.js": "^1.4.0",
     "convex": "^1.25.0",
     "express": "^4.19.2"
   }
