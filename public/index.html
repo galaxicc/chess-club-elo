@@ -336,6 +336,27 @@
     <div class="file-labels" id="replayFileLabels" style="max-width:min(400px,100%);"></div>
     <div id="replayMoveList" class="hint" style="margin-top:8px;max-height:100px;overflow:auto;"></div>
   </div>
+  <div class="card">
+    <h2>Play vs AI (local, not rated)</h2>
+    <div class="row" style="margin-bottom:8px;">
+      <select id="aiColor" style="flex:1;min-width:120px;">
+        <option value="w">I play White</option>
+        <option value="b">I play Black</option>
+      </select>
+      <select id="aiLevel" style="flex:1;min-width:140px;">
+        <option value="beginner">Beginner (random)</option>
+        <option value="intermediate">Intermediate (greedy)</option>
+      </select>
+      <button class="primary" onclick="startAiGame()">New AI game</button>
+    </div>
+    <div id="aiStatus" class="hint" style="margin-bottom:6px;">No AI game yet.</div>
+    <div class="board-wrap" style="max-width:min(420px,100%);">
+      <div class="rank-labels" id="aiRankLabels"></div>
+      <div id="aiBoard" class="chess-board"></div>
+    </div>
+    <div class="file-labels" id="aiFileLabels" style="max-width:min(400px,100%);"></div>
+    <div id="aiMoves" class="hint" style="margin-top:8px;max-height:80px;overflow:auto;"></div>
+  </div>
 </main>
 
 <script>
@@ -1363,6 +1384,157 @@ function getOpeningName(moves){
   if (list.length >= 2) return 'Developing...';
   return null;
 }
+
+
+// --- Play vs AI (local) ---
+let aiGame = null;
+let aiPointerStart = null;
+let aiPointerMoved = false;
+async function startAiGame(){
+  const C = await ensureChess();
+  const humanColor = ($('aiColor')||{}).value || 'w';
+  const level = ($('aiLevel')||{}).value || 'beginner';
+  const chess = new C();
+  aiGame = { chess: chess, humanColor: humanColor, aiColor: (humanColor==='w'?'b':'w'), level: level, selectedSquare: null, legalTargets: new Set() };
+  const st = $('aiStatus'); if(st) st.textContent = (aiGame.aiColor==='w' ? 'AI (White) to move' : 'Your move (White)');
+  const moves = $('aiMoves'); if(moves) moves.textContent = '';
+  renderAiBoard();
+  if (aiGame.aiColor === 'w') { setTimeout(makeAiMove, 300); }
+}
+function renderAiBoard(){
+  const container = $('aiBoard'); if(!container || !aiGame) return;
+  const chess = aiGame.chess;
+  const b = chess.board();
+  const sel = aiGame.selectedSquare;
+  const legal = aiGame.legalTargets || new Set();
+  let html='';
+  for(let r=0;r<8;r++){
+    for(let c=0;c<8;c++){
+      const dark=(r+c)%2===1;
+      const square=String.fromCharCode(97+c)+(8-r);
+      const piece=b[r][c];
+      const classes=['square', dark?'dark':'light'];
+      if (sel===square) classes.push('selected');
+      if (legal.has(square)) classes.push('legal');
+      const pieceImg = piece ? `<img class="piece" alt="${piece.color}${piece.type}" src="https://raw.githubusercontent.com/lichess-org/lila/master/public/piece/cburnett/${piece.color}${piece.type.toUpperCase()}.svg">` : '';
+      html += `<div class="${classes.join(' ')}" data-square="${square}">${pieceImg}</div>`;
+    }
+  }
+  container.innerHTML=html;
+  const rl=$('aiRankLabels'), fl=$('aiFileLabels');
+  if (rl) rl.innerHTML = [8,7,6,5,4,3,2,1].map(x=>`<span>${x}</span>`).join('');
+  if (fl) fl.innerHTML = ['a','b','c','d','e','f','g','h'].map(x=>`<span>${x}</span>`).join('');
+}
+function handleAiSquareClick(square){
+  if(!aiGame) return;
+  const chess = aiGame.chess;
+  if (chess.isGameOver()) return;
+  if (chess.turn() !== aiGame.humanColor) return;
+  const piece = chess.get(square);
+  if (aiGame.selectedSquare && aiGame.selectedSquare !== square){
+    if (aiGame.legalTargets.has(square)){ doHumanMove(aiGame.selectedSquare, square); }
+    else {
+      clearAiSelection();
+      if (piece && piece.color === aiGame.humanColor){ selectAiSquare(square); }
+    }
+    return;
+  }
+  if (piece && piece.color === aiGame.humanColor){
+    aiGame.selectedSquare = square;
+    aiGame.legalTargets = new Set(chess.moves({square, verbose:true}).map(m=>m.to));
+    renderAiBoard();
+  } else {
+    clearAiSelection();
+  }
+}
+function selectAiSquare(square){ aiGame.selectedSquare=square; aiGame.legalTargets=new Set(aiGame.chess.moves({square,verbose:true}).map(m=>m.to)); renderAiBoard(); }
+function clearAiSelection(){ if(aiGame){ aiGame.selectedSquare=null; aiGame.legalTargets=new Set(); } renderAiBoard(); }
+function doHumanMove(from,to){
+  const chess=aiGame.chess;
+  const piece=chess.get(from);
+  const move=chess.move({from,to,promotion: (piece && piece.type==='p' && (to[1]==='8'||to[1]==='1'))?'q':undefined});
+  if(!move){ clearAiSelection(); return; }
+  aiGame.selectedSquare=null; aiGame.legalTargets=new Set();
+  renderAiBoard(); updateAiStatus(); appendAiMove(move.san);
+  if (chess.isGameOver()){ updateAiStatus(); return; }
+  if (chess.turn() === aiGame.aiColor) setTimeout(makeAiMove, 350);
+}
+function tryAiMove(from,to){
+  if(!aiGame) return;
+  const chess=aiGame.chess;
+  if (chess.turn() !== aiGame.humanColor) return;
+  const ok = chess.moves({verbose:true}).some(m=>m.from===from && m.to===to);
+  if(!ok){ handleAiSquareClick(from); return; }
+  doHumanMove(from,to);
+}
+function makeAiMove(){
+  if(!aiGame) return;
+  const chess=aiGame.chess;
+  if (chess.isGameOver()) return;
+  const moves=chess.moves({verbose:true});
+  if(!moves.length) return;
+  let chosen=null;
+  if (aiGame.level==='beginner'){
+    chosen=moves[Math.floor(Math.random()*moves.length)];
+  } else {
+    let best=-Infinity;
+    const scored=[];
+    for(const m of moves){
+      chess.move(m);
+      const v = evaluateAi(chess, aiGame.aiColor);
+      chess.undo();
+      scored.push({m,v});
+      if(v>best) best=v;
+    }
+    const cands=scored.filter(s=>s.v>=best-0.01);
+    chosen=cands[Math.floor(Math.random()*cands.length)].m;
+  }
+  const m=chess.move({from:chosen.from,to:chosen.to,promotion:chosen.promotion||'q'});
+  if(m){
+    renderAiBoard(); updateAiStatus(); appendAiMove(m.san);
+  }
+}
+function evaluateAi(chess, side){
+  const values={p:1,n:3,b:3,r:5,q:9,k:0};
+  let score=0;
+  const b=chess.board();
+  for(let r=0;r<8;r++) for(let c=0;c<8;c++){
+    const p=b[r][c]; if(!p) continue;
+    const v=values[p.type]||0;
+    score += (p.color===side ? v : -v);
+  }
+  // mobility bonus for side to move handled lightly
+  const extra = chess.moves().length * 0.05;
+  score += (chess.turn()===side ? extra : -extra);
+  return score;
+}
+function appendAiMove(san){ const el=$('aiMoves'); if(el) el.textContent = (el.textContent||'') + san + ' '; }
+function updateAiStatus(){
+  const el=$('aiStatus'); if(!el || !aiGame) return;
+  const chess=aiGame.chess;
+  if(chess.isCheckmate()) { el.textContent = chess.turn()===aiGame.humanColor ? 'Checkmate — AI wins' : 'Checkmate — You win!'; }
+  else if(chess.isDraw()) { el.textContent = 'Draw'; }
+  else if(chess.isCheck()) { el.textContent = (chess.turn()===aiGame.humanColor ? 'Your move (in check)' : 'AI thinking (in check)'); }
+  else { el.textContent = (chess.turn()===aiGame.humanColor ? 'Your move' : 'AI thinking...'); }
+}
+// AI board events
+(function initAiBoardEvents(){
+  const boardEl=$('aiBoard'); if(!boardEl) return;
+  let startSq=null, moved=false;
+  boardEl.addEventListener('pointerdown', e=>{
+    const sq=e.target && e.target.closest ? e.target.closest('.square') : null;
+    if(!sq) return; startSq=sq.dataset.square; moved=false;
+  });
+  boardEl.addEventListener('pointermove', ()=>{ if(startSq) moved=true; });
+  boardEl.addEventListener('pointerup', e=>{
+    const sq=e.target && e.target.closest ? e.target.closest('.square') : null;
+    const upSq=sq?sq.dataset.square:null;
+    if(!startSq) return;
+    if(upSq && upSq!==startSq && moved){ tryAiMove(startSq,upSq); }
+    else { handleAiSquareClick(startSq); }
+    startSq=null; moved=false;
+  });
+})();
 
 // init
 if(adminToken){ $('adminLogin').style.display='none'; $('adminPanel').classList.add('open'); }
