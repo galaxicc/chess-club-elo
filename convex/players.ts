@@ -37,6 +37,7 @@ export const create = mutation({
       wins: 0,
       draws: 0,
       losses: 0,
+      history: [],
     });
     const existingLatest = await ctx.db
       .query("config")

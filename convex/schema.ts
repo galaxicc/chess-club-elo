@@ -11,6 +11,17 @@ export default defineSchema({
     wins: v.number(),
     draws: v.number(),
     losses: v.number(),
+    history: v.optional(
+      v.array(
+        v.object({
+          rating: v.number(),
+          delta: v.number(),
+          opponent: v.string(),
+          score: v.number(),
+          date: v.string(),
+        })
+      )
+    ),
   })
     .index("by_group", ["group"])
     .index("by_group_name", ["group", "name"]),

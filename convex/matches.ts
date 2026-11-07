@@ -41,12 +41,14 @@ export const submit = mutation({
     const newA = Math.round(ra + da);
     const newB = Math.round(rb + db);
 
+    const matchDate = new Date().toISOString();
     await ctx.db.patch(pa._id, {
       rating: newA,
       games: pa.games + 1,
       wins: pa.wins + (parsed.sa > parsed.sb ? 1 : 0),
       draws: pa.draws + (parsed.sa === parsed.sb ? 1 : 0),
       losses: pa.losses + (parsed.sa < parsed.sb ? 1 : 0),
+      history: [...(pa.history || []), { rating: newA, delta: newA - ra, opponent: pb.name, score: parsed.sa, date: matchDate }],
     });
     await ctx.db.patch(pb._id, {
       rating: newB,
@@ -54,6 +56,7 @@ export const submit = mutation({
       wins: pb.wins + (parsed.sb > parsed.sa ? 1 : 0),
       draws: pb.draws + (parsed.sa === parsed.sb ? 1 : 0),
       losses: pb.losses + (parsed.sb < parsed.sa ? 1 : 0),
+      history: [...(pb.history || []), { rating: newB, delta: newB - rb, opponent: pa.name, score: parsed.sb, date: matchDate }],
     });
 
     const matchId = await ctx.db.insert("matches", {

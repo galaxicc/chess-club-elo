@@ -95,6 +95,13 @@ export const HTML = `<!DOCTYPE html>
     <h2>Latest Member</h2>
     <div id="latestMemberText">No members yet.</div>
   </div>
+  <div class="card" id="profileCard" style="display:none;">
+    <h2 id="profileName">Player Profile</h2>
+    <div id="profileSummary" class="hint"></div>
+    <div id="profileChart" style="margin:10px 0;"></div>
+    <div id="profileHistory" class="scroll"></div>
+    <button class="ghost" onclick="closeProfile()">Close profile</button>
+  </div>
   <div class="grid">
     <div class="card">
       <h2>Submit Result <span class="hint">(anyone)</span></h2>
@@ -484,7 +491,7 @@ async function loadStats(){
   const lb = $('leaderboard');
   lb.innerHTML = s.top20.map(p=>\`<tr>
     <td class="rank">\${p.rank}</td>
-    <td>\${escapeHtml(p.name)}</td>
+    <td><a href="#" onclick="showProfile('\${p.id}');return false;" style="color:var(--accent);text-decoration:none;">\${escapeHtml(p.name)}</a></td>
     <td><b>\${p.rating}</b></td>
     <td class="delta \${p.delta>=0?'pos':'neg'}">\${p.delta>=0?'+':''}\${p.delta}</td>
     <td>\${p.games}</td>
@@ -969,6 +976,43 @@ function showGameResultOverlay(game){
   launchConfetti(game.result);
 }
 function closeGameResultOverlay(){ const o=$('gameResultOverlay'); if(o) o.style.display='none'; }
+function closeProfile(){ const c=$('profileCard'); if(c) c.style.display='none'; }
+function showProfile(id){
+  const p = playersCache.find(x=>String(x._id||x.id)===String(id));
+  if(!p) return;
+  $('profileName').textContent = p.name + ' — Profile';
+  const delta = p.rating - (p.initial||1800);
+  $('profileSummary').innerHTML = \`Rating: <b>\${p.rating}</b> (\${delta>=0?'+':''}\${delta}) · Games: \${p.games||0} (W \${p.wins||0} / D \${p.draws||0} / L \${p.losses||0}) · Started at \${p.initial||1800}\`;
+  const hist = Array.isArray(p.history) ? [...p.history].reverse() : [];
+  const ratings = [p.initial||1800].concat((p.history||[]).map(h=>h.rating));
+  let svg = '<span class="hint">Play more games to see a rating graph.</span>';
+  if(ratings.length >= 2){
+    const W=420, H=90;
+    const min=Math.min(...ratings), max=Math.max(...ratings), range=Math.max(1,max-min);
+    const pts = ratings.map((r,i)=> {
+      const x = 8 + (i/(ratings.length-1))*(W-16);
+      const y = H-8 - ((r-min)/range)*(H-16);
+      return x.toFixed(1)+','+y.toFixed(1);
+    }).join(' ');
+    svg = \`<svg width="100%" height="\${H}" viewBox="0 0 \${W} \${H}" preserveAspectRatio="none" style="background:rgba(0,0,0,0.15);border-radius:8px;">
+      <polyline points="\${pts}" fill="none" stroke="var(--accent)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" />
+    </svg>\`;
+  }
+  const chart=$('profileChart'); if(chart) chart.innerHTML = svg;
+  const el=$('profileHistory'); if(!el) return;
+  if(!hist.length){ el.innerHTML = '<span class="hint">No rated games yet.</span>'; }
+  else {
+    el.innerHTML = \`<table><thead><tr><th>Date</th><th>Opponent</th><th>Score</th><th>Δ</th><th>New</th></tr></thead><tbody>\` +
+      hist.map(h=>\`<tr>
+        <td>\${new Date(h.date).toLocaleDateString()}</td>
+        <td>\${escapeHtml(h.opponent||'?')}</td>
+        <td>\${h.score}</td>
+        <td class="delta \${h.delta>=0?'pos':'neg'}">\${h.delta>=0?'+':''}\${h.delta}</td>
+        <td>\${h.rating}</td>
+      </tr>\`).join('') + \`</tbody></table>\`;
+  }
+  const card=$('profileCard'); if(card){ card.style.display='block'; card.scrollIntoView({behavior:'smooth',block:'nearest'}); }
+}
 function launchConfetti(result){
   const colors = result==='1-0' ? ['#facc15','#f97316','#ef4444','#fde68a'] :
                   result==='0-1' ? ['#3b82f6','#8b5cf6','#10b981','#a7f3d0'] :

@@ -90,10 +90,7 @@ function auth(req, res, next) {
 app.get('/api/groups/:g/players', (req, res) => {
   const g = req.params.g;
   if (!data.groups[g]) return res.status(404).json({ error: 'no group' });
-  const players = Object.values(data.groups[g].players).map(p => {
-    const { history, ...rest } = p;
-    return rest;
-  });
+  const players = Object.values(data.groups[g].players);
   res.json(players);
 });
 
@@ -172,8 +169,8 @@ app.post('/api/groups/:g/matches', (req, res) => {
     deltaA: pa.rating - oldA, deltaB: pb.rating - oldB,
     date: new Date().toISOString()
   };
-  pa.history.push({ matchId: match.id, opp: pb.name, score: parsed.sa, newRating: pa.rating, date: match.date });
-  pb.history.push({ matchId: match.id, opp: pa.name, score: parsed.sb, newRating: pb.rating, date: match.date });
+  pa.history.push({ rating: pa.rating, delta: pa.rating - oldA, opponent: pb.name, score: parsed.sa, date: match.date });
+  pb.history.push({ rating: pb.rating, delta: pb.rating - oldB, opponent: pa.name, score: parsed.sb, date: match.date });
   data.groups[g].matches.unshift(match);
   if (data.groups[g].matches.length > 500) data.groups[g].matches.length = 500;
   saveData();
