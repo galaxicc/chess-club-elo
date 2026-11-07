@@ -1569,7 +1569,6 @@ async function fetchCloudEval(fen){
   } catch(e){}
   // try Lichess cloud eval
   let cp = null;
-  let cp = null;
   let lastErr = null;
   for (let attempt=0; attempt<2; attempt++){
     try {
