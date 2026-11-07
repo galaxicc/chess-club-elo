@@ -649,6 +649,7 @@ let selectedSquare = null;
 let legalTargets = new Set();
 let gamePollTimer = null;
 let clockTimer = null;
+let heartbeatTimer = null;
 let mySide = localStorage.getItem(currentGameId ? 'gameSide::'+currentGameId : 'x') || null;
 let claimingTimeout = false;
 let soundEnabled = localStorage.getItem('soundEnabled') !== 'false';
@@ -698,6 +699,15 @@ function startPolling(){
   gamePollTimer = setInterval(async ()=>{ if(currentGameId){ await loadGame(); } }, 1000);
   clockTimer = setInterval(updateClocks, 100);
 }
+function startHeartbeat(){
+  stopHeartbeat();
+  if(!currentGameId) return;
+  const side = mySide || 'spectate';
+  const beat = async ()=>{ try { await api('/api/games/'+currentGameId+'/heartbeat', { method:'POST', body: JSON.stringify({ side }) }); } catch(e){} };
+  beat();
+  heartbeatTimer = setInterval(beat, 10000);
+}
+function stopHeartbeat(){ if(heartbeatTimer) clearInterval(heartbeatTimer); heartbeatTimer=null; }
 function populateGameDropdowns(){
   const w=$('gameWhite'), b=$('gameBlack');
   if(!w||!b) return;
@@ -788,14 +798,17 @@ function renderMoveList(){
 }
 function updateGameStatus(){
   const el=$('gameStatus'); if(!el || !currentGame) return;
+  const now = Date.now();
+  const wOn = currentGame.whiteLastSeen && (now - currentGame.whiteLastSeen < 45000);
+  const bOn = currentGame.blackLastSeen && (now - currentGame.blackLastSeen < 45000);
   if(currentGame.status==='pending'){
-    el.textContent = 'Pending — waiting for both players to join';
+    el.textContent = 'Pending — waiting for both players to join' + (wOn||bOn ? ' (online: ' + (wOn?'W':'') + (bOn?' B':'') + ')' : '');
   } else if(currentGame.status==='finished'){
     el.textContent = 'Finished: ' + (currentGame.result||'');
   } else if(currentGame.status==='cancelled'){
     el.textContent = 'Aborted';
   } else {
-    el.textContent = (currentGame.turn==='w' ? 'White' : 'Black') + ' to move';
+    el.textContent = (currentGame.turn==='w' ? 'White' : 'Black') + ' to move  ' + (wOn?'White●':'White○') + ' ' + (bOn?'Black●':'Black○') + (currentGame.spectatorLastSeen && (now-currentGame.spectatorLastSeen<45000) ? '  (spectators online)' : '');
   }
 }
 function boardOrientation(){ let base = (mySide === 'b') ? 'b' : 'w'; if (boardFlipped) base = base === 'b' ? 'w' : 'b'; return base; }
@@ -905,10 +918,11 @@ function openGameAs(id, side){
   } else {
     mySide = localStorage.getItem('gameSide::'+id) || null;
   }
-  (async ()=>{ await loadGame(); startPolling(); })();
+  (async ()=>{ await loadGame(); startPolling(); startHeartbeat(); })();
 }
 function closeGame(){
   stopPolling();
+  stopHeartbeat();
   currentGameId=null; currentGame=null; chess=null; mySide=null;
   localStorage.removeItem('currentGameId');
   const ag=$('activeGame'); if(ag) ag.style.display='none';

@@ -66,6 +66,9 @@ export default defineSchema({
     createdAt: v.string(),
     shortCode: v.optional(v.string()),
     spectatorCount: v.optional(v.number()),
+    whiteLastSeen: v.optional(v.number()),
+    blackLastSeen: v.optional(v.number()),
+    spectatorLastSeen: v.optional(v.number()),
   })
     .index("by_status", ["status"])
     .index("by_white", ["whitePlayerId"])

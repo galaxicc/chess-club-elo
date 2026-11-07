@@ -258,6 +258,10 @@ http.route({
         const res = await ctx.runMutation(api.games.join, { gameId: id, side: body.side });
         return json(res, 200, origin);
       }
+      if (action === "heartbeat") {
+        const res = await ctx.runMutation(api.games.heartbeat, { gameId: id, side: body.side || "spectate" });
+        return json(res, 200, origin);
+      }
       if (action === "move") {
         const res = await ctx.runMutation(api.games.makeMove, {
           gameId: id,

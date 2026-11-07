@@ -110,6 +110,19 @@ export const join = mutation({
   },
 });
 
+export const heartbeat = mutation({
+  args: { gameId: v.id("games"), side: v.string() },
+  handler: async (ctx, args) => {
+    const game: any = await getGameOrThrow(ctx, args.gameId);
+    if (game.status === "finished" || game.status === "cancelled") return { ok: false };
+    const now = Date.now();
+    if (args.side === "w") await ctx.db.patch(game._id, { whiteLastSeen: now });
+    else if (args.side === "b") await ctx.db.patch(game._id, { blackLastSeen: now });
+    else if (args.side === "spectate") await ctx.db.patch(game._id, { spectatorLastSeen: now });
+    return { ok: true };
+  },
+});
+
 export const get = query({
   args: { gameId: v.id("games") },
   handler: async (ctx, args) => ctx.db.get(args.gameId),
