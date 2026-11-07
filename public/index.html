@@ -1455,6 +1455,7 @@ function evaluateBoard(chess) {
 
 let minimaxNodes = 0;
 function minimax(chess, depth, alpha, beta, isMaximizing) {
+  if (Date.now() > AI_DEADLINE) throw new Error('TIMEUP');
   minimaxNodes++;
   if (depth === 0) return evaluateBoard(chess);
   const moves = chess.moves({ verbose: true });
@@ -1493,32 +1494,55 @@ function minimax(chess, depth, alpha, beta, isMaximizing) {
   }
 }
 
-function findBestMove(chess, depth) {
+let AI_DEADLINE = 0;
+function findBestMove(chess, maxDepth) {
+  if (!maxDepth) maxDepth = 5;
   minimaxNodes = 0;
-  const moves = chess.moves({ verbose: true });
-  if (moves.length === 0) return null;
-  
-  const isMaximizing = chess.turn() === 'w';
   let bestMove = null;
-  let bestEval = isMaximizing ? -Infinity : Infinity;
-  
-  moves.sort((a, b) => {
-    const aCap = a.flags.includes('c') ? 1 : 0;
-    const bCap = b.flags.includes('c') ? 1 : 0;
-    return bCap - aCap;
-  });
-
-  for (const move of moves) {
-    chess.move(move);
-    const ev = minimax(chess, depth - 1, -Infinity, Infinity, !isMaximizing);
-    chess.undo();
-    if (isMaximizing) {
-      if (ev > bestEval) { bestEval = ev; bestMove = move; }
-    } else {
-      if (ev < bestEval) { bestEval = ev; bestMove = move; }
+  let bestDepth = 0;
+  let bestNodes = 0;
+  const start = Date.now();
+  const budget = 2500;
+  for (let depth = 1; depth <= maxDepth; depth++) {
+    if (Date.now() - start > budget) break;
+    AI_DEADLINE = start + budget;
+    const moves = chess.moves({ verbose: true });
+    if (moves.length === 0) break;
+    const isMaximizing = chess.turn() === 'w';
+    let currentBest = null;
+    let currentBestEval = isMaximizing ? -Infinity : Infinity;
+    let currentNodes = minimaxNodes;
+    moves.sort((a, b) => {
+      const aCap = a.flags.includes('c') ? 1 : 0;
+      const bCap = b.flags.includes('c') ? 1 : 0;
+      return bCap - aCap;
+    });
+    let aborted = false;
+    try {
+      for (const move of moves) {
+        if (Date.now() > AI_DEADLINE) throw new Error('TIMEUP');
+        chess.move(move);
+        const ev = minimax(chess, depth - 1, -Infinity, Infinity, !isMaximizing);
+        chess.undo();
+        if (isMaximizing) {
+          if (ev > currentBestEval) { currentBestEval = ev; currentBest = move; }
+        } else {
+          if (ev < currentBestEval) { currentBestEval = ev; currentBest = move; }
+        }
+      }
+      bestMove = currentBest;
+      bestDepth = depth;
+    } catch (e) {
+      if (e && e.message === 'TIMEUP') {
+        aborted = true;
+      } else {
+        throw e;
+      }
     }
+    bestNodes = minimaxNodes; // approximate total searched so far
+    if (aborted) break;
   }
-  return { move: bestMove, nodes: minimaxNodes };
+  return { move: bestMove, nodes: bestNodes, depth: bestDepth };
 }
 
 let aiGame = null;
@@ -1690,18 +1714,17 @@ async function makeAiMove(){
     chosen=moves[Math.floor(Math.random()*moves.length)];
     aiDebug = { engine:'Random legal (beginner)', depth:1, nodes: moves.length, pv:null, bestmove: chosen.san };
   } else if (aiGame.level==='difficult'){
-    aiDebug = { engine:'Internal minimax', depth:3, nodes:0, pv:null, bestmove:null };
+    aiDebug = { engine:'Internal minimax', depth:0, nodes:0, pv:null, bestmove:null };
     try {
-      const bestRes = findBestMove(chess, 3);
-      if (bestRes && bestRes.move) {
-        chosen = bestRes.move;
+      const res = findBestMove(chess, 5);
+      if (res && res.move) {
+        chosen = res.move;
         aiDebug.engine = 'Internal minimax';
-        aiDebug.depth = 3;
-        aiDebug.nodes = bestRes.nodes;
+        aiDebug.depth = res.depth;
+        aiDebug.nodes = res.nodes;
       }
     } catch(e){ console.error('minimax failed:', e); }
     if (!chosen) {
-      // fallback to intermediate
       let best=-Infinity;
       const scored=[];
       for(const m of moves){
@@ -1714,8 +1737,10 @@ async function makeAiMove(){
       const cands=scored.filter(s=>s.v>=best-0.01);
       chosen=cands[Math.floor(Math.random()*cands.length)].m;
       aiDebug.engine = 'Greedy fallback';
+      aiDebug.depth = 1;
+      aiDebug.nodes = moves.length;
     }
-  } else {
+
     let best=-Infinity;
     const scored=[];
     for(const m of moves){
