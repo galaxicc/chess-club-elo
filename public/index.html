@@ -1502,7 +1502,7 @@ function findBestMove(chess, maxDepth) {
   let bestDepth = 0;
   let bestNodes = 0;
   const start = Date.now();
-  const budget = 1000;
+  const budget = 15000;
   for (let depth = 1; depth <= maxDepth; depth++) {
     if (Date.now() - start > budget) break;
     AI_DEADLINE = start + budget;
@@ -1716,7 +1716,7 @@ async function makeAiMove(){
   } else if (aiGame.level==='difficult'){
     aiDebug = { engine:'Internal minimax', depth:0, nodes:0, pv:null, bestmove:null };
     try {
-      const res = findBestMove(chess, 3);
+      const res = findBestMove(chess, 4);
       if (res && res.move) {
         chosen = res.move;
         aiDebug.engine = 'Internal minimax';
