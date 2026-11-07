@@ -7,7 +7,11 @@
 <style>
   :root { --bg:#0f172a; --card:#1e293b; --accent:#38bdf8; --muted:#94a3b8; --good:#22c55e; --bad:#ef4444; --warn:#f59e0b; }
   * { box-sizing:border-box; }
-  body { margin:0; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; background:var(--bg); color:#e2e8f0; }
+  body { margin:0; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; background:var(--bg); color:#e2e8f0; transition: background .2s ease, color .2s ease; }
+  body.light { --bg:#f8fafc; --card:#ffffff; --accent:#2563eb; --muted:#475569; --good:#16a34a; --bad:#dc2626; --warn:#d97706; color:#1e293b; }
+  button, .chip, .tab { transition: transform .12s ease, background .2s ease, opacity .2s; }
+  button:hover { transform: translateY(-1px); }
+  .card { transition: box-shadow .2s ease, background .2s ease; }
   header { padding:18px 20px; display:flex; align-items:center; gap:16px; border-bottom:1px solid #334155; }
   header h1 { margin:0; font-size:20px; }
   .tabs { display:flex; flex-wrap:wrap; gap:8px; margin-left:auto; max-width:100%; }
@@ -84,6 +88,7 @@
   <div class="tabs" id="tabsBar">
     <button class="ghost" onclick="refreshAll()">Refresh</button>
   </div>
+  <button class="ghost" id="themeToggle" onclick="toggleTheme()" style="margin-left:8px;">Theme</button>
 </header>
 <main>
   <div class="card" id="motdCard" style="display:none;">
@@ -1065,8 +1070,13 @@ function downloadPGN(id){
   document.body.removeChild(a);
 }
 
+let currentTheme = localStorage.getItem('theme') || 'dark';
+function applyTheme(){ document.body.classList.toggle('light', currentTheme==='light'); const b=$('themeToggle'); if(b) b.textContent = currentTheme==='dark' ? 'Light mode' : 'Dark mode'; }
+function toggleTheme(){ currentTheme = currentTheme==='dark' ? 'light' : 'dark'; localStorage.setItem('theme', currentTheme); applyTheme(); }
+
 // init
 if(adminToken){ $('adminLogin').style.display='none'; $('adminPanel').classList.add('open'); }
+applyTheme();
 refreshAll();
 </script>
 </body>
