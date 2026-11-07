@@ -708,6 +708,7 @@ async function loadGame(){
   try {
     currentGame = await api('/api/games/'+currentGameId);
     const scEl=$('gameSpectators'); if(scEl) scEl.textContent='Spectators: '+(currentGame.spectatorCount||0);
+    const START_FEN = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
     if (mySide === 'spectate') {
       const sk = 'specJoined::'+currentGameId;
       if (!localStorage.getItem(sk)) {
@@ -716,7 +717,8 @@ async function loadGame(){
       }
     }
     const C = await ensureChess();
-    chess = new C(currentGame.fen);
+    const fenToShow = (currentGame.status === 'cancelled') ? START_FEN : currentGame.fen;
+    chess = new C(fenToShow);
     const active = $('activeGame');
     if(active) active.style.display='block';
     const wait = $('gameWaiting');
@@ -740,6 +742,7 @@ async function loadGame(){
 }
 function renderMoveList(){
   const el=$('moveList'); if(!el || !currentGame) return;
+  if (currentGame.status === 'cancelled') { el.textContent = 'Aborted — starting position shown.'; return; }
   el.textContent = (currentGame.moves||[]).join(' ');
 }
 function updateGameStatus(){
