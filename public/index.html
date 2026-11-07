@@ -359,6 +359,7 @@
       <button class="primary" onclick="startAiGame()">New AI game</button>
     </div>
     <div id="aiStatus" class="hint" style="margin-bottom:6px;">No AI game yet.</div>
+    <div id="aiDebug" class="hint" style="margin-bottom:8px; font-size:11px; opacity:0.85;">Engine debug: idle</div>
     <div class="board-wrap" style="max-width:min(420px,100%);">
       <div class="rank-labels" id="aiRankLabels"></div>
       <div id="aiBoard" class="chess-board"></div>
@@ -1422,6 +1423,7 @@ function getOpeningName(moves){
 
 // --- Play vs AI (local) ---
 let aiGame = null;
+let aiDebug = { engine:'idle', depth:null, nodes:null, pv:null, bestmove:null };
 let aiPointerStart = null;
 let aiPointerMoved = false;
 async function startAiGame(){
@@ -1540,13 +1542,27 @@ async function ensureStockfish(){
 async function getStockfishMove(fen){
   const engine = await ensureStockfish();
   if (!engine) return null;
+  aiDebug.engine = 'Stockfish.js (UCI)';
+  aiDebug.depth = null;
+  aiDebug.nodes = null;
+  aiDebug.pv = null;
+  aiDebug.bestmove = null;
   return new Promise((resolve) => {
     let done = false;
     const handler = (line) => {
       if (typeof line !== 'string') return;
+      const dm = line.match(/(?:^|\s)depth (\d+)/);
+      if (dm) aiDebug.depth = dm[1];
+      const nm = line.match(/nodes (\d+)/);
+      if (nm) aiDebug.nodes = nm[1];
+      const pvm = line.match(/ pv (.+)/);
+      if (pvm) aiDebug.pv = pvm[1].trim().split(/\s+/).slice(0,4).join(' ');
       const m = line.match(/^bestmove\s+(\S+)/);
       if (m) {
         done = true;
+        aiDebug.bestmove = m[1];
+        updateAiDebugUI();
+        console.debug('[AI]', aiDebug);
         cleanup();
         resolve(m[1]);
       }
@@ -1556,7 +1572,7 @@ async function getStockfishMove(fen){
     try { engine.worker.postMessage('stop'); } catch(e){}
     engine.worker.postMessage('position fen ' + fen);
     engine.worker.postMessage('go depth 12');
-    const timer = setTimeout(() => { if (!done) { try { engine.worker.postMessage('stop'); } catch(e){} cleanup(); resolve(null); } }, 4000);
+    const timer = setTimeout(() => { if (!done) { try { engine.worker.postMessage('stop'); } catch(e){} cleanup(); aiDebug.engine += ' (timeout)'; updateAiDebugUI(); resolve(null); } }, 4000);
   });
 }
 async function makeAiMove(){
@@ -1566,11 +1582,16 @@ async function makeAiMove(){
   aiGame.thinking = true;
   const st=$('aiStatus'); if(st) st.textContent = 'AI thinking...';
   const moves=chess.moves({verbose:true});
-  if(!moves.length){ aiGame.thinking=false; updateAiStatus(); return; }
+  if(!moves.length){ aiGame.thinking=false; updateAiStatus(); updateAiDebugUI(); return; }
+  if (aiGame.level==='beginner') aiDebug = { engine:'Random legal (beginner)', depth:1, nodes: moves.length, pv:null, bestmove:null };
+  else if (aiGame.level==='difficult') aiDebug = { engine:'Stockfish.js (UCI)', depth:null, nodes: moves.length, pv:null, bestmove:null };
+  else aiDebug = { engine:'Greedy (1-ply)', depth:1, nodes: moves.length, pv:null, bestmove:null };
   let chosen=null;
   if (aiGame.level==='beginner'){
     chosen=moves[Math.floor(Math.random()*moves.length)];
+    aiDebug = { engine:'Random legal (beginner)', depth:1, nodes: moves.length, pv:null, bestmove: chosen.san };
   } else if (aiGame.level==='difficult'){
+    aiDebug = { engine:'Stockfish.js (UCI)', depth:null, nodes:null, pv:null, bestmove:null };
     // Try strong Stockfish (UCI) first
     try {
       const uci = await getStockfishMove(chess.fen());
@@ -1581,6 +1602,7 @@ async function makeAiMove(){
     } catch(e){ console.error('stockfish failed:', e); }
     // Then fallback to js-chess-engine
     if (!chosen) {
+      aiDebug.engine = 'js-chess-engine (fallback)';
       try {
         const mod = await ensureJsChess();
         if (mod && mod.Game) {
@@ -1621,6 +1643,11 @@ async function makeAiMove(){
     const cands=scored.filter(s=>s.v>=best-0.01);
     chosen=cands[Math.floor(Math.random()*cands.length)].m;
   }
+  if (chosen) aiDebug.bestmove = chosen.san;
+  if (aiDebug.nodes == null) aiDebug.nodes = moves.length;
+  if (aiDebug.depth == null) aiDebug.depth = (aiGame.level === 'beginner' || aiGame.level !== 'difficult') ? 1 : aiDebug.depth;
+  updateAiDebugUI();
+  console.debug('[AI] final', aiDebug);
   const m=chess.move({from:chosen.from,to:chosen.to,promotion:chosen.promotion||'q'});
   if(m){
     renderAiBoard(); updateAiStatus(); appendAiMove(m.san);
@@ -1628,6 +1655,8 @@ async function makeAiMove(){
   }
   aiGame.thinking = false;
   updateAiStatus();
+  updateAiDebugUI();
+  updateAiDebugUI();
 }
 function evaluateAi(chess, side){
   const values={p:1,n:3,b:3,r:5,q:9,k:0};
@@ -1644,6 +1673,16 @@ function evaluateAi(chess, side){
   return score;
 }
 function appendAiMove(san){ const el=$('aiMoves'); if(el) el.textContent = (el.textContent||'') + san + ' '; }
+function updateAiDebugUI(){
+  const el=$('aiDebug'); if(!el) return;
+  let t='Engine: '+aiDebug.engine;
+  if (aiDebug.depth != null) t += ' | depth '+aiDebug.depth;
+  if (aiDebug.nodes != null) t += ' | nodes '+aiDebug.nodes;
+  if (aiDebug.pv) t += ' | pv '+aiDebug.pv;
+  if (aiDebug.bestmove) t += ' | move '+aiDebug.bestmove;
+  el.textContent = t;
+  console.debug('[AI]', t);
+}
 function updateAiStatus(){
   const el=$('aiStatus'); if(!el || !aiGame) return;
   const chess=aiGame.chess;
