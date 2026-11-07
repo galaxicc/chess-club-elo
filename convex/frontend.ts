@@ -1418,7 +1418,7 @@ async function startAiGame(){
   const humanColor = ($('aiColor')||{}).value || 'w';
   const level = ($('aiLevel')||{}).value || 'beginner';
   const chess = new C();
-  aiGame = { chess: chess, humanColor: humanColor, aiColor: (humanColor==='w'?'b':'w'), level: level, selectedSquare: null, legalTargets: new Set() };
+  aiGame = { chess: chess, humanColor: humanColor, aiColor: (humanColor==='w'?'b':'w'), level: level, selectedSquare: null, legalTargets: new Set(), endTriggered: false, result: null, mate: false };
   const st = $('aiStatus'); if(st) st.textContent = (aiGame.aiColor==='w' ? 'AI (White) to move' : 'Your move (White)');
   const moves = $('aiMoves'); if(moves) moves.textContent = '';
   renderAiBoard();
@@ -1430,13 +1430,17 @@ function renderAiBoard(){
   const b = chess.board();
   const sel = aiGame.selectedSquare;
   const legal = aiGame.legalTargets || new Set();
+  let mateZone = new Set();
+  if (chess.isCheckmate()) { mateZone = new Set(chess.turn()==='w' ? [1,2,3,4] : [5,6,7,8]); }
   let html='';
   for(let r=0;r<8;r++){
     for(let c=0;c<8;c++){
       const dark=(r+c)%2===1;
       const square=String.fromCharCode(97+c)+(8-r);
+      const rank = 8-r;
       const piece=b[r][c];
       const classes=['square', dark?'dark':'light'];
+      if (mateZone.has(rank)) classes.push('mate-zone');
       if (sel===square) classes.push('selected');
       if (legal.has(square)) classes.push('legal');
       const pieceImg = piece ? \`<img class="piece" alt="\${piece.color}\${piece.type}" src="https://raw.githubusercontent.com/lichess-org/lila/master/public/piece/cburnett/\${piece.color}\${piece.type.toUpperCase()}.svg">\` : '';
@@ -1479,7 +1483,7 @@ function doHumanMove(from,to){
   if(!move){ clearAiSelection(); return; }
   aiGame.selectedSquare=null; aiGame.legalTargets=new Set();
   renderAiBoard(); updateAiStatus(); appendAiMove(move.san);
-  if (chess.isGameOver()){ updateAiStatus(); return; }
+  if (chess.isGameOver()){ triggerAiEnd(); return; }
   if (chess.turn() === aiGame.aiColor) setTimeout(makeAiMove, 350);
 }
 function tryAiMove(from,to){
@@ -1515,6 +1519,7 @@ function makeAiMove(){
   const m=chess.move({from:chosen.from,to:chosen.to,promotion:chosen.promotion||'q'});
   if(m){
     renderAiBoard(); updateAiStatus(); appendAiMove(m.san);
+    if (chess.isGameOver()) triggerAiEnd();
   }
 }
 function evaluateAi(chess, side){
@@ -1539,6 +1544,25 @@ function updateAiStatus(){
   else if(chess.isDraw()) { el.textContent = 'Draw'; }
   else if(chess.isCheck()) { el.textContent = (chess.turn()===aiGame.humanColor ? 'Your move (in check)' : 'AI thinking (in check)'); }
   else { el.textContent = (chess.turn()===aiGame.humanColor ? 'Your move' : 'AI thinking...'); }
+}
+function triggerAiEnd(){
+  if(!aiGame || aiGame.endTriggered) return;
+  aiGame.endTriggered = true;
+  const chess = aiGame.chess;
+  const isMate = chess.isCheckmate();
+  let result = null;
+  if (isMate) { result = chess.turn() === 'w' ? '0-1' : '1-0'; } // side to move is mated
+  else if (chess.isDraw()) { result = '1/2-1/2'; }
+  aiGame.result = result;
+  aiGame.mate = isMate;
+  if (result) {
+    showGameResultOverlay({ _id: 'ai-' + Date.now(), status: 'finished', result: result, moves: chess.history() });
+  }
+  if (isMate) {
+    const board = $('aiBoard');
+    if (board) { board.classList.remove('shake'); void board.offsetWidth; board.classList.add('shake'); }
+  }
+  renderAiBoard();
 }
 // AI board events
 (function initAiBoardEvents(){
