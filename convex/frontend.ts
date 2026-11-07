@@ -12,7 +12,10 @@ export const HTML = `<!DOCTYPE html>
   body.light { --bg:#f8fafc; --card:#ffffff; --accent:#2563eb; --muted:#475569; --good:#16a34a; --bad:#dc2626; --warn:#d97706; color:#1e293b; }
   button, .chip, .tab { transition: transform .12s ease, background .2s ease, opacity .2s; }
   button:hover { transform: translateY(-1px); }
-  .card { transition: box-shadow .2s ease, background .2s ease; }
+  .card { transition: transform .2s ease, box-shadow .2s ease, background .2s ease; border: 1px solid rgba(148,163,184,0.08); }
+  .card:hover { transform: translateY(-2px); box-shadow: 0 12px 30px rgba(0,0,0,0.22); }
+  header { background: linear-gradient(90deg, rgba(56,189,248,0.08), transparent); }
+  body.light .card { border-color: rgba(15,23,42,0.08); }
   header { padding:18px 20px; display:flex; align-items:center; gap:16px; border-bottom:1px solid #334155; }
   header h1 { margin:0; font-size:20px; }
   .tabs { display:flex; flex-wrap:wrap; gap:8px; margin-left:auto; max-width:100%; }
