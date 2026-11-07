@@ -89,6 +89,8 @@ export const HTML = `<!DOCTYPE html>
   .square.legal::after { content:''; width:12px; height:12px; border-radius:50%; background:rgba(0,0,0,0.25); }
   .square.legal-capture { box-shadow: inset 0 0 0 4px rgba(239,68,68,0.5); }
   .piece { width:82%; height:82%; pointer-events:none; }
+  .square.mate-zone { animation: mateColorRotate 1.8s linear infinite; }
+  @keyframes mateColorRotate { 0% { filter: hue-rotate(0deg) saturate(1.7); } 50% { filter: hue-rotate(180deg) saturate(1.9); } 100% { filter: hue-rotate(360deg) saturate(1.7); } }
   .flying-piece { position:absolute; z-index:20; pointer-events:none; transition: transform .18s ease-out, opacity .18s ease-out; }
   .players-list { display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; }
   .welcome-name { font-weight:800; font-size:20px; background: linear-gradient(90deg,#ff595e,#ffca3a,#8ac926,#1982c4,#6a4c93,#ff595e); background-size:300% 300%; -webkit-background-clip:text; background-clip:text; color:transparent; animation: rainbowText 3s linear infinite; }
@@ -907,6 +909,12 @@ function renderBoard(){
   const hist = chess.history({ verbose: true });
   const last = hist && hist.length ? hist[hist.length-1] : null;
   const lastSquares = new Set(last ? [last.from, last.to] : []);
+  // checkmate celebrate: color-rotate the checkmated side's half
+  let mateZone = new Set();
+  if (currentGame && currentGame.status === 'finished' && currentGame.result && last && last.san && last.san.includes('#')) {
+    const targetRanks = (currentGame.result === '1-0') ? [5,6,7,8] : [1,2,3,4];
+    targetRanks.forEach(r => mateZone.add(r));
+  }
   let html='';
   for (const rank of ranks) {
     for (const file of files) {
@@ -916,6 +924,7 @@ function renderBoard(){
       const piece = board[rowIndex][colIndex];
       const dark = (rowIndex + colIndex) % 2 === 1;
       const classes = ['square', dark?'dark':'light'];
+      if (mateZone.has(rank)) classes.push('mate-zone');
       if (lastSquares.has(square)) classes.push('last-move');
       if (selectedSquare===square) classes.push('selected');
       if (legalTargets.has(square)) classes.push('legal');
