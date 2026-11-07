@@ -355,6 +355,7 @@ export const HTML = `<!DOCTYPE html>
       <select id="aiLevel" style="flex:1;min-width:140px;">
         <option value="beginner">Beginner (random)</option>
         <option value="intermediate">Intermediate (greedy)</option>
+        <option value="difficult">Difficult (Stockfish engine)</option>
       </select>
       <button class="primary" onclick="startAiGame()">New AI game</button>
     </div>
@@ -1461,7 +1462,7 @@ function renderAiBoard(){
   if (fl) fl.innerHTML = ['a','b','c','d','e','f','g','h'].map(x=>\`<span>\${x}</span>\`).join('');
 }
 function handleAiSquareClick(square){
-  if(!aiGame) return;
+  if(!aiGame || aiGame.thinking) return;
   const chess = aiGame.chess;
   if (chess.isGameOver()) return;
   if (chess.turn() !== aiGame.humanColor) return;
@@ -1502,15 +1503,87 @@ function tryAiMove(from,to){
   if(!ok){ handleAiSquareClick(from); return; }
   doHumanMove(from,to);
 }
-function makeAiMove(){
+async function ensureStockfish(){
+  if (window._sfEngine) return window._sfEngine;
+  if (window._sfLoading) {
+    let tries=0;
+    while (!window._sfEngine && tries < 40) { await new Promise(r=>setTimeout(r,100)); tries++; }
+    return window._sfEngine || null;
+  }
+  window._sfLoading = true;
+  try {
+    const w = new Worker('https://cdn.jsdelivr.net/npm/stockfish@19.0.1/src/stockfish-19-lite-single.js');
+    const engine = { worker: w, listeners: [] };
+    w.onmessage = (ev) => {
+      const line = typeof ev.data === 'string' ? ev.data : (ev.data && ev.data.data) || '';
+      (engine.listeners || []).slice().forEach(cb => { try { cb(line); } catch(e){} });
+    };
+    engine.listeners = [];
+    w.postMessage('uci');
+    w.postMessage('setoption name Threads value 1');
+    w.postMessage('isready');
+    await new Promise(r=>setTimeout(r, 1200));
+    window._sfEngine = engine;
+    window._sfLoading = false;
+    return engine;
+  } catch (e) {
+    window._sfLoading = false;
+    return null;
+  }
+}
+async function getStockfishMove(fen){
+  const engine = await ensureStockfish();
+  if (!engine) return null;
+  return new Promise((resolve) => {
+    let done = false;
+    const handler = (line) => {
+      if (typeof line !== 'string') return;
+      const m = line.match(/^bestmove\\s+(\\S+)/);
+      if (m) {
+        done = true;
+        cleanup();
+        resolve(m[1]);
+      }
+    };
+    const cleanup = () => { engine.listeners = engine.listeners.filter(cb => cb !== handler); clearTimeout(timer); };
+    engine.listeners.push(handler);
+    try { engine.worker.postMessage('stop'); } catch(e){}
+    engine.worker.postMessage('position fen ' + fen);
+    engine.worker.postMessage('go depth 12');
+    const timer = setTimeout(() => { if (!done) { try { engine.worker.postMessage('stop'); } catch(e){} cleanup(); resolve(null); } }, 4000);
+  });
+}
+async function makeAiMove(){
   if(!aiGame) return;
   const chess=aiGame.chess;
   if (chess.isGameOver()) return;
+  aiGame.thinking = true;
+  const st=$('aiStatus'); if(st) st.textContent = 'AI thinking...';
   const moves=chess.moves({verbose:true});
-  if(!moves.length) return;
+  if(!moves.length){ aiGame.thinking=false; updateAiStatus(); return; }
   let chosen=null;
   if (aiGame.level==='beginner'){
     chosen=moves[Math.floor(Math.random()*moves.length)];
+  } else if (aiGame.level==='difficult'){
+    let uci=null;
+    try { uci = await getStockfishMove(chess.fen()); } catch(e){ uci=null; }
+    if (uci && uci.length >= 4) {
+      chosen = moves.find(m => m.from === uci.slice(0,2) && m.to === uci.slice(2,4) && (!uci[4] || m.promotion === uci[4]));
+    }
+    if (!chosen) {
+      // fallback to greedy intermediate
+      let best=-Infinity;
+      const scored=[];
+      for(const m of moves){
+        chess.move(m);
+        const v = evaluateAi(chess, aiGame.aiColor);
+        chess.undo();
+        scored.push({m,v});
+        if(v>best) best=v;
+      }
+      const cands=scored.filter(s=>s.v>=best-0.01);
+      chosen=cands[Math.floor(Math.random()*cands.length)].m;
+    }
   } else {
     let best=-Infinity;
     const scored=[];
@@ -1529,6 +1602,8 @@ function makeAiMove(){
     renderAiBoard(); updateAiStatus(); appendAiMove(m.san);
     if (chess.isGameOver()) triggerAiEnd();
   }
+  aiGame.thinking = false;
+  updateAiStatus();
 }
 function evaluateAi(chess, side){
   const values={p:1,n:3,b:3,r:5,q:9,k:0};
