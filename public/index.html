@@ -354,7 +354,7 @@
       <select id="aiLevel" style="flex:1;min-width:140px;">
         <option value="beginner">Beginner (random)</option>
         <option value="intermediate">Intermediate (greedy)</option>
-        <option value="difficult">Difficult (JS chess engine)</option>
+        <option value="difficult">Difficult (Stockfish engine)</option>
       </select>
       <button class="primary" onclick="startAiGame()">New AI game</button>
     </div>
@@ -1511,7 +1511,7 @@ async function ensureStockfish(){
   }
   window._sfLoading = true;
   try {
-    const w = new Worker('https://cdn.jsdelivr.net/npm/stockfish@19.0.1/src/stockfish-19-lite-single.js');
+    const w = new Worker('https://cdnjs.cloudflare.com/ajax/libs/stockfish.js/10.0.2/stockfish.js');
     const engine = { worker: w, listeners: [] };
     w.onmessage = (ev) => {
       const line = typeof ev.data === 'string' ? ev.data : (ev.data && ev.data.data) || '';
@@ -1564,18 +1564,29 @@ async function makeAiMove(){
   if (aiGame.level==='beginner'){
     chosen=moves[Math.floor(Math.random()*moves.length)];
   } else if (aiGame.level==='difficult'){
+    // Try strong Stockfish (UCI) first
     try {
-      const mod = await ensureJsChess();
-      if (mod && mod.Game) {
-        const gameObj = new mod.Game(chess.fen());
-        const result = gameObj.ai({ level: 5 });
-        const entries = result && result.move ? Object.entries(result.move) : [];
-        if (entries.length) {
-          const [from, to] = entries[0];
-          chosen = moves.find(m => m.from === String(from).toLowerCase() && m.to === String(to).toLowerCase());
-        }
+      const uci = await getStockfishMove(chess.fen());
+      if (uci && uci.length >= 4) {
+        chosen = moves.find(m => m.from === uci.slice(0,2).toLowerCase() && m.to === uci.slice(2,4).toLowerCase());
+        if (chosen && uci[4]) chosen.promotion = uci[4];
       }
-    } catch(e){ console.error('js-chess-engine failed:', e); }
+    } catch(e){ console.error('stockfish failed:', e); }
+    // Then fallback to js-chess-engine
+    if (!chosen) {
+      try {
+        const mod = await ensureJsChess();
+        if (mod && mod.Game) {
+          const gameObj = new mod.Game(chess.fen());
+          const result = gameObj.ai({ level: 5 });
+          const entries = result && result.move ? Object.entries(result.move) : [];
+          if (entries.length) {
+            const [from, to] = entries[0];
+            chosen = moves.find(m => m.from === String(from).toLowerCase() && m.to === String(to).toLowerCase());
+          }
+        }
+      } catch(e){ console.error('js-chess-engine failed:', e); }
+    }
     if (!chosen) {
       // fallback to greedy intermediate
       let best=-Infinity;
