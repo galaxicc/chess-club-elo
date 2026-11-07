@@ -2,6 +2,7 @@ import { query, mutation } from "./_generated/server";
 import { v } from "convex/values";
 import { Chess } from "chess.js";
 import { api } from "./_generated/api";
+import { isAdmin } from "./lib";
 
 const START_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 
@@ -24,10 +25,11 @@ async function recordMatchIfFinished(ctx: any, game: any, result: string) {
   const scoreA = result === "1-0" ? 1 : result === "0-1" ? 0 : 0.5;
   const scoreB = result === "1-0" ? 0 : result === "0-1" ? 1 : 0.5;
   try {
-    await ctx.runMutation(api.matches.submit, {
+    const matchRes = await ctx.runMutation(api.matches.submit, {
       group,
       result: `${white.name}-${black.name} ${scoreA}-${scoreB}`,
     });
+    if (matchRes && matchRes.match) await ctx.db.patch(game._id, { matchId: matchRes.match._id });
   } catch (e) {
     // ignore duplicate/errors to avoid blocking game finish
   }
@@ -378,5 +380,16 @@ export const claimTimeout = mutation({
       }
     }
     return { result: null, timeout: false };
+  },
+});
+
+export const remove = mutation({
+  args: { gameId: v.id("games"), adminToken: v.string() },
+  handler: async (ctx, args) => {
+    if (!(await isAdmin(ctx, args.adminToken))) throw new Error("unauthorized");
+    const game: any = await ctx.db.get(args.gameId);
+    if (!game) throw new Error("game not found");
+    await ctx.db.delete(args.gameId);
+    return { ok: true };
   },
 });

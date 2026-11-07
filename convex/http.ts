@@ -300,6 +300,23 @@ http.route({
 });
 http.route({
   pathPrefix: "/api/games/",
+  method: "DELETE",
+  handler: httpAction(async (ctx, request) => {
+    const origin = request.headers.get("Origin");
+    const adminToken = (request.headers.get("Authorization") || "").replace(/^Bearer\s+/i, "").trim();
+    try {
+      const parts = new URL(request.url).pathname.split("/").filter(Boolean);
+      const id = parts[2];
+      if (!id) return json({ error: "missing id" }, 400, origin);
+      const res = await ctx.runMutation(api.games.remove, { gameId: id, adminToken });
+      return json(res, 200, origin);
+    } catch (e: any) {
+      return json({ error: errMsg(e) }, 400, origin);
+    }
+  }),
+});
+http.route({
+  pathPrefix: "/api/games/",
   method: "OPTIONS",
   handler: httpAction(async (_, request) => new Response(null, { status: 204, headers: corsHeaders(request.headers.get("Origin")) })),
 });
@@ -430,6 +447,32 @@ http.route({
 });
 http.route({
   path: "/api/admin/motd",
+  method: "OPTIONS",
+  handler: httpAction(async (_, request) => new Response(null, { status: 204, headers: corsHeaders(request.headers.get("Origin")) })),
+});
+
+// Admin reset player ELO
+http.route({
+  path: "/api/admin/reset-player",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    const origin = request.headers.get("Origin");
+    const adminToken = (request.headers.get("Authorization") || "").replace(/^Bearer\s+/i, "").trim();
+    try {
+      const body = await request.json();
+      const res = await ctx.runMutation(api.players.resetElo, {
+        group: String(body.group),
+        playerId: body.playerId,
+        adminToken,
+      });
+      return json(res, 200, origin);
+    } catch (e: any) {
+      return json({ error: errMsg(e) }, 400, origin);
+    }
+  }),
+});
+http.route({
+  path: "/api/admin/reset-player",
   method: "OPTIONS",
   handler: httpAction(async (_, request) => new Response(null, { status: 204, headers: corsHeaders(request.headers.get("Origin")) })),
 });

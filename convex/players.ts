@@ -79,3 +79,22 @@ export const reset = mutation({
     return { ok: true };
   },
 });
+export const resetElo = mutation({
+  args: { group: v.string(), playerId: v.id("players"), adminToken: v.string() },
+  handler: async (ctx, args) => {
+    if (!(await isAdmin(ctx, args.adminToken))) throw new Error("unauthorized");
+    const player: any = await ctx.db.get(args.playerId);
+    if (!player || player.group !== args.group) throw new Error("not found");
+    const startingRating = player.name.toLowerCase() === "number1" ? 2300 : 1800;
+    await ctx.db.patch(args.playerId, {
+      rating: startingRating,
+      initial: startingRating,
+      games: 0,
+      wins: 0,
+      draws: 0,
+      losses: 0,
+      history: [],
+    });
+    return { ok: true };
+  },
+});

@@ -568,6 +568,11 @@ async function deleteUser(id, name){
   try { await api('/api/groups/'+currentTab+'/players/'+id, { method:'DELETE' }); await refreshAll(); }
   catch(err){ alert(err.message); }
 }
+async function resetPlayerElo(id, name){
+  if(!confirm('Reset ELO for '+name+' to starting rating?')) return;
+  try { await api('/api/admin/reset-player', { method:'POST', body: JSON.stringify({ group: currentTab, playerId: id }) }); await refreshAll(); }
+  catch(err){ alert(err.message); }
+}
 async function changePassword(e){
   e.preventDefault();
   const msg=$('pwMsg');
@@ -587,12 +592,18 @@ async function renderAdminPlayers(){
   if(!adminToken) return;
   try {
     const ps = await api('/api/groups/'+currentTab+'/players');
-    $('adminPlayers').innerHTML = ps.map(p=>\`<tr>
+    $('adminPlayers').innerHTML = ps.map(p=>{
+      const pid = p._id || p.id;
+      return \`<tr>
       <td>\${escapeHtml(p.name)}</td>
       <td>\${p.rating}</td>
       <td>\${p.games}</td>
-      <td><button class="danger" style="padding:4px 8px;font-size:12px" onclick="deleteUser('\${p.id}','\${escapeHtml(p.name)}')">Delete</button></td>
-    </tr>\`).join('') || '<tr><td colspan="4" class="hint">none</td></tr>';
+      <td>
+        <button class="ghost" style="padding:4px 8px;font-size:12px" onclick="resetPlayerElo('\${pid}','\${escapeHtml(p.name)}')">Reset ELO</button>
+        <button class="danger" style="padding:4px 8px;font-size:12px" onclick="deleteUser('\${pid}','\${escapeHtml(p.name)}')">Delete</button>
+      </td>
+    </tr>\`;
+    }).join('') || '<tr><td colspan="4" class="hint">none</td></tr>';
   } catch(e){ /* maybe token invalid */ }
 }
 
@@ -678,6 +689,7 @@ async function loadGamesList(){
       if (g.result) label += ' — ' + g.result;
       const canAbort = g.status === 'pending' || g.status === 'active';
       const abortBtn = canAbort ? \`<button class="danger" type="button" style="padding:4px 8px;font-size:12px" onclick="abortGameById('\${g._id}')">Abort</button>\` : '';
+      const delBtn = adminToken ? \`<button class="danger" type="button" style="padding:4px 8px;font-size:12px" onclick="deleteGameById('\${g._id}')">Delete</button>\` : '';
       const pgnBtn = (g.moves && g.moves.length) ? \`<button class="ghost" type="button" style="padding:4px 8px;font-size:12px" onclick="downloadPGN('\${g._id}')">PGN</button>\` : '';
       return \`<div class="row" style="margin-bottom:6px;">
         <span style="flex:1">\${escapeHtml(label)}</span>
@@ -686,6 +698,7 @@ async function loadGamesList(){
         <button class="ghost" type="button" onclick="openGameAs('\${g._id}','spectate')">View</button>
         \${pgnBtn}
         \${abortBtn}
+        \${delBtn}
       </div>\`;
     }).join('') || '<span class="hint">No games yet.</span>';
   } catch(e){ el.innerHTML = '<span class="hint">'+escapeHtml(e.message)+'</span>'; }
@@ -855,6 +868,14 @@ function closeGame(){
   currentGameId=null; currentGame=null; chess=null; mySide=null;
   localStorage.removeItem('currentGameId');
   const ag=$('activeGame'); if(ag) ag.style.display='none';
+}
+async function deleteGameById(id){
+  if(!confirm('Delete game permanently (admin)?')) return;
+  try {
+    await api('/api/games/'+id, { method:'DELETE' });
+    if (currentGameId === id) closeGame();
+    await loadGamesList();
+  } catch(e){ alert(e.message); }
 }
 async function abortGameById(id){
   if(!confirm('Abort this game without rating change?')) return;
