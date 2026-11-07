@@ -304,6 +304,29 @@ http.route({
   handler: httpAction(async (_, request) => new Response(null, { status: 204, headers: corsHeaders(request.headers.get("Origin")) })),
 });
 
+// Resolve short game code
+http.route({
+  path: "/api/games/resolve",
+  method: "GET",
+  handler: httpAction(async (ctx, request) => {
+    const origin = request.headers.get("Origin");
+    try {
+      const code = new URL(request.url).searchParams.get("code") || "";
+      if (!code) return json({ error: "missing code" }, 400, origin);
+      const game = await ctx.runQuery(api.games.getByCode, { code });
+      if (!game) return json({ error: "not found" }, 404, origin);
+      return json(game, 200, origin);
+    } catch (e: any) {
+      return json({ error: errMsg(e) }, 400, origin);
+    }
+  }),
+});
+http.route({
+  path: "/api/games/resolve",
+  method: "OPTIONS",
+  handler: httpAction(async (_, request) => new Response(null, { status: 204, headers: corsHeaders(request.headers.get("Origin")) })),
+});
+
 // Tab names
 http.route({
   path: "/api/tab-names",

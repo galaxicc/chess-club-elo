@@ -11,6 +11,10 @@ async function getGameOrThrow(ctx: any, gameId: any) {
   return game;
 }
 
+function makeShortCode() {
+  return Math.random().toString(36).slice(2, 8).toUpperCase();
+}
+
 async function recordMatchIfFinished(ctx: any, game: any, result: string) {
   if (game.matchRecorded) return;
   const white = await ctx.db.get(game.whitePlayerId);
@@ -50,6 +54,12 @@ export const create = mutation({
     const whiteJoined = args.creatorSide === "w";
     const blackJoined = args.creatorSide === "b";
     const bothJoined = whiteJoined && blackJoined; // (never true from a single creator)
+    let shortCode = makeShortCode();
+    let exists = await ctx.db.query("games").withIndex("by_short_code", (q: any) => q.eq("shortCode", shortCode)).first();
+    while (exists) {
+      shortCode = makeShortCode();
+      exists = await ctx.db.query("games").withIndex("by_short_code", (q: any) => q.eq("shortCode", shortCode)).first();
+    }
     const id = await ctx.db.insert("games", {
       whitePlayerId: args.whitePlayerId,
       blackPlayerId: args.blackPlayerId,
@@ -67,6 +77,8 @@ export const create = mutation({
       createdAt: new Date().toISOString(),
       whiteJoined,
       blackJoined,
+      shortCode,
+      spectatorCount: 0,
     });
     return await ctx.db.get(id);
   },
@@ -76,8 +88,12 @@ export const join = mutation({
   args: { gameId: v.id("games"), side: v.string() },
   handler: async (ctx, args) => {
     const game: any = await getGameOrThrow(ctx, args.gameId);
-    if (args.side !== "w" && args.side !== "b") throw new Error("bad side");
     if (game.status === "finished" || game.status === "cancelled") throw new Error("game already ended");
+    if (args.side === "spectate") {
+      await ctx.db.patch(game._id, { spectatorCount: (game.spectatorCount || 0) + 1 });
+      return await ctx.db.get(game._id);
+    }
+    if (args.side !== "w" && args.side !== "b") throw new Error("bad side");
     const whiteJoined = game.whiteJoined || args.side === "w";
     const blackJoined = game.blackJoined || args.side === "b";
     const bothJoined = whiteJoined && blackJoined;
@@ -95,6 +111,17 @@ export const join = mutation({
 export const get = query({
   args: { gameId: v.id("games") },
   handler: async (ctx, args) => ctx.db.get(args.gameId),
+});
+
+export const getByCode = query({
+  args: { code: v.string() },
+  handler: async (ctx, args) => {
+    const game = await ctx.db
+      .query("games")
+      .withIndex("by_short_code", (q: any) => q.eq("shortCode", args.code.toUpperCase()))
+      .first();
+    return game || null;
+  },
 });
 
 export const list = query({

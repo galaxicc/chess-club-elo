@@ -233,6 +233,7 @@
     </div>
     <div id="activeGame" style="display:none;margin-top:12px;">
       <div id="gameWaiting" style="display:none; padding:6px 8px; border-radius:8px; background:rgba(250,204,21,0.15); color:#facc15; font-weight:600; margin-bottom:8px;">Waiting for the other player...</div>
+      <div id="gameSpectators" class="hint" style="margin-bottom:6px;">Spectators: 0</div>
       <div class="row" style="align-items:center;justify-content:space-between;">
         <div style="font-weight:700;" id="gameStatus">Game</div>
         <div class="row">
@@ -685,6 +686,14 @@ async function loadGame(){
   if(!currentGameId) return;
   try {
     currentGame = await api('/api/games/'+currentGameId);
+    const scEl=$('gameSpectators'); if(scEl) scEl.textContent='Spectators: '+(currentGame.spectatorCount||0);
+    if (mySide === 'spectate') {
+      const sk = 'specJoined::'+currentGameId;
+      if (!localStorage.getItem(sk)) {
+        localStorage.setItem(sk,'1');
+        api('/api/games/'+currentGameId+'/join', { method:'POST', body: JSON.stringify({ side:'spectate' }) }).then(()=>loadGame()).catch(()=>{});
+      }
+    }
     const C = await ensureChess();
     chess = new C(currentGame.fen);
     const active = $('activeGame');
@@ -814,7 +823,8 @@ async function createGame(e){
     localStorage.setItem('gameSide::'+g._id, side);
     openGameAs(g._id, side);
     msg.className='msg ok';
-    const shareUrl = location.origin + '/?game=' + g._id + '&side=' + (side==='w'?'b':'w');
+    const code = g.shortCode || g._id;
+    const shareUrl = location.origin + '/?g=' + code + '&side=' + (side==='w'?'b':'w');
     msg.textContent='Game created. Share with opponent: ' + shareUrl;
     const qr = $('gameQr');
     if (qr) qr.innerHTML = '<img alt="QR code" src="https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=' + encodeURIComponent(shareUrl) + '" style="border:1px solid #334155;border-radius:8px;background:#fff;padding:6px;">';
@@ -911,8 +921,22 @@ async function declineDrawGame(){
 
 // open game from query param or last game
 const qp = new URLSearchParams(location.search);
+const qShort = qp.get('g') || qp.get('code');
 const qGame = qp.get('game');
-if (qGame) {
+if (qShort) {
+  const side = qp.get('side') === 'b' ? 'b' : (qp.get('side') === 'spectate' ? 'spectate' : 'w');
+  (async () => {
+    try {
+      const g = await api('/api/games/resolve?code=' + encodeURIComponent(qShort));
+      if (g && g._id) {
+        localStorage.setItem('currentGameId', g._id);
+        if (side !== 'spectate') localStorage.setItem('gameSide::'+g._id, side);
+        mySide = (side === 'spectate') ? null : side;
+        openGameAs(g._id, side);
+      }
+    } catch (e) { console.error(e); }
+  })();
+} else if (qGame) {
   const side = qp.get('side') === 'b' ? 'b' : (qp.get('side') === 'spectate' ? 'spectate' : 'w');
   openGameAs(qGame, side);
 } else if (currentGameId) {

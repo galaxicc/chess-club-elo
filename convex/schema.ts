@@ -53,10 +53,13 @@ export default defineSchema({
     whiteJoined: v.optional(v.boolean()),
     blackJoined: v.optional(v.boolean()),
     createdAt: v.string(),
+    shortCode: v.optional(v.string()),
+    spectatorCount: v.optional(v.number()),
   })
     .index("by_status", ["status"])
     .index("by_white", ["whitePlayerId"])
-    .index("by_black", ["blackPlayerId"]),
+    .index("by_black", ["blackPlayerId"])
+    .index("by_short_code", ["shortCode"]),
 
   adminSessions: defineTable({
     token: v.string(),
