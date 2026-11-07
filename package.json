@@ -1,0 +1,16 @@
+{
+  "name": "chess-club-elo",
+  "version": "1.0.0",
+  "private": true,
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "npm run gen:frontend && npx convex dev",
+    "deploy": "npm run gen:frontend && npx convex deploy",
+    "gen:frontend": "node scripts/gen-frontend.js"
+  },
+  "dependencies": {
+    "convex": "^1.25.0",
+    "express": "^4.19.2"
+  }
+}
