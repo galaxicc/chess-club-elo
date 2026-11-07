@@ -357,6 +357,19 @@
     <div class="file-labels" id="aiFileLabels" style="max-width:min(400px,100%);"></div>
     <div id="aiMoves" class="hint" style="margin-top:8px;max-height:80px;overflow:auto;"></div>
   </div>
+  <div class="card">
+    <h2>PGN Analysis (Lichess cloud eval)</h2>
+    <textarea id="analysisInput" placeholder="Paste PGN here..." style="width:100%;min-height:80px;background:var(--bg);color:inherit;border:1px solid #334155;border-radius:8px;padding:8px;font-family:monospace;font-size:12px;"></textarea>
+    <div class="row" style="margin-top:8px;">
+      <button class="primary" onclick="analyzePgn()">Analyze</button>
+      <button class="ghost" onclick="cancelAnalysis()">Cancel</button>
+      <button class="ghost" onclick="loadLastGameIntoAnalysis()">Use last game</button>
+    </div>
+    <div class="msg" id="analysisMsg"></div>
+    <div id="analysisProgress" class="hint"></div>
+    <div id="analysisGraph" style="margin-top:8px;height:140px;background:rgba(0,0,0,0.15);border-radius:8px;overflow:hidden;"></div>
+    <div id="analysisMoves" class="hint scroll" style="max-height:180px;overflow:auto;margin-top:8px;"></div>
+  </div>
 </main>
 
 <script>
@@ -1535,6 +1548,113 @@ function updateAiStatus(){
     startSq=null; moved=false;
   });
 })();
+
+
+// --- PGN analysis (Lichess cloud eval) ---
+const evalCache = {};
+let analysisCancel = false;
+async function fetchCloudEval(fen){
+  if (evalCache[fen] != null) return evalCache[fen];
+  const url = 'https://lichess.org/api/cloud-eval?fen=' + encodeURIComponent(fen) + '&multiPv=1';
+  const res = await fetch(url);
+  if (!res.ok) { await new Promise(r=>setTimeout(r, 800)); throw new Error('Cloud eval rate limited/unavailable'); }
+  const data = await res.json();
+  const pv = data && data.pvs && data.pvs[0];
+  let cp = 0;
+  if (pv) {
+    if (pv.mate != null) cp = pv.mate > 0 ? 10000 - Math.abs(pv.mate) : -10000 + Math.abs(pv.mate);
+    else if (pv.cp != null) cp = pv.cp;
+  }
+  evalCache[fen] = cp;
+  return cp;
+}
+function cpToPercent(cp){
+  if (cp > 9000) return 100;
+  if (cp < -9000) return 0;
+  return 50 + 50 * Math.tanh(cp / 200);
+}
+async function analyzePgn(){
+  analysisCancel = false;
+  const msg=$('analysisMsg'), prog=$('analysisProgress'), graph=$('analysisGraph'), movesEl=$('analysisMoves');
+  if (msg){ msg.className='msg'; msg.textContent=''; }
+  const input = ($('analysisInput')||{}).value||'';
+  if (!input.trim()){ if (msg){ msg.className='msg err'; msg.textContent='Paste a PGN first.'; } return; }
+  try {
+    const C = await ensureChess();
+    const tmp = new C();
+    if (!tmp.loadPgn(input, { sloppy: true })) throw new Error('Could not parse PGN');
+    const hist = tmp.history({ verbose: true });
+    if (!hist.length){ if(msg){ msg.className='msg err'; msg.textContent='No moves in PGN.'; } return; }
+    const positions = ['rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1'];
+    const moves = [];
+    const c = new C();
+    for (const m of hist){ c.move(m.san); moves.push(m.san); positions.push(c.fen()); }
+    const evalPoints = [];
+    const moveClasses = [];
+    const initCp = await fetchCloudEval(positions[0]);
+    evalPoints.push(initCp);
+    const colors = { excellent:'#10b981', good:'#22c55e', inaccuracy:'#facc15', mistake:'#f97316', blunder:'#ef4444' };
+    for (let i=0;i<moves.length;i++){
+      if (analysisCancel){ if(msg){ msg.className='msg err'; msg.textContent='Analysis cancelled.'; } return; }
+      const before = evalPoints[evalPoints.length-1];
+      const after = await fetchCloudEval(positions[i+1]);
+      evalPoints.push(after);
+      let loss = (i%2===0) ? (before - after) : (after - before);
+      let cls = 'good';
+      if (loss >= 300) cls='blunder';
+      else if (loss >= 100) cls='mistake';
+      else if (loss >= 50) cls='inaccuracy';
+      else if (loss <= -50) cls='excellent';
+      moveClasses.push(cls);
+      // render progressive
+      renderAnalysisGraph(evalPoints, graph);
+      renderAnalysisMoves(moves.slice(0,i+1), moveClasses, evalPoints, movesEl, colors);
+      if (prog) prog.textContent = (i+1) + '/' + moves.length + ' moves analyzed';
+      await new Promise(res=>setTimeout(res, 350));
+    }
+    if (msg){ msg.className='msg ok'; msg.textContent = 'Analysis complete (' + moves.length + ' moves).'; }
+    renderAnalysisMoves(moves, moveClasses, evalPoints, movesEl, colors);
+  } catch(e){
+    if (msg){ msg.className='msg err'; msg.textContent = e.message || 'Analysis failed'; }
+  }
+}
+function cancelAnalysis(){ analysisCancel = true; }
+function renderAnalysisGraph(evalPoints, el){
+  if(!el) return;
+  const W=600,H=140;
+  const pts = evalPoints.map((cp,i)=>{
+    const x = 10 + (i/(Math.max(1,evalPoints.length-1)))*(W-20);
+    const y = H - (cpToPercent(cp)/100)*H;
+    return x.toFixed(1)+','+y.toFixed(1);
+  }).join(' ');
+  el.innerHTML = `<svg width="100%" height="${H}" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" style="background:var(--card);border-radius:8px;">
+    <rect x="0" y="0" width="${W}" height="${H/2}" fill="rgba(239,68,68,0.06)" />
+    <rect x="0" y="${H/2}" width="${W}" height="${H/2}" fill="rgba(34,197,94,0.06)" />
+    <line x1="0" y1="${H/2}" x2="${W}" y2="${H/2}" stroke="rgba(148,163,184,0.45)" stroke-dasharray="4,4" />
+    <polyline points="${pts}" fill="none" stroke="var(--accent)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" />
+  </svg>`;
+}
+function renderAnalysisMoves(moves, classes, evalPoints, el, colors){
+  if(!el) return;
+  const out = moves.map((m,i)=>{
+    const cls = classes[i] || 'good';
+    const mvNo = (i%2===0) ? (Math.floor(i/2)+1)+'. ' : '';
+    return `<div style="display:flex;justify-content:space-between;padding:2px 0;border-bottom:1px solid rgba(148,163,184,0.08);">
+      <span style="color:${colors[cls]||'inherit'}">${mvNo}${escapeHtml(m)}</span>
+      <span class="hint">${evalPoints[i+1] >= 0 ? '+' : ''}${evalPoints[i+1]}</span>
+    </div>`;
+  }).join('');
+  el.innerHTML = out || '<span class="hint">No moves.</span>';
+}
+async function loadLastGameIntoAnalysis(){
+  try {
+    const games = await api('/api/games');
+    if (games && games.length) {
+      const pgn = await fetch((API||'') + '/api/games/' + games[0]._id + '/pgn').then(r=>r.text());
+      const ta=$('analysisInput'); if(ta) ta.value = pgn;
+    }
+  } catch(e){ console.error(e); }
+}
 
 // init
 if(adminToken){ $('adminLogin').style.display='none'; $('adminPanel').classList.add('open'); }
