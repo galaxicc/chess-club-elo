@@ -1556,7 +1556,18 @@ let analysisUsedFallback = false;
 let analysisCancel = false;
 async function fetchCloudEval(fen){
   if (evalCache[fen] != null) return evalCache[fen];
+  // terminal checkmate positions are evaluated as forced mate
+  try {
+    const C = await ensureChess();
+    const ch = new C(fen);
+    if (ch.isCheckmate()) {
+      const cp = ch.turn() === 'w' ? -9999 : 9999;
+      evalCache[fen] = cp;
+      return cp;
+    }
+  } catch(e){}
   // try Lichess cloud eval
+  let cp = null;
   let cp = null;
   let lastErr = null;
   for (let attempt=0; attempt<2; attempt++){
