@@ -312,6 +312,12 @@
       <div id="gamesList" class="scroll"></div>
     </div>
   </div>
+  <div id="gameJoinOverlay" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.45); z-index:9998; align-items:center; justify-content:center;">
+    <div style="background:var(--card); padding:22px 30px; border-radius:16px; text-align:center; max-width:300px; box-shadow:0 16px 40px rgba(0,0,0,0.35);">
+      <div style="font-size:22px; font-weight:800; margin-bottom:6px;">⚔️ Game on!</div>
+      <div style="color:var(--muted);">Both players joined — clocks started.</div>
+    </div>
+  </div>
   <div id="gameResultOverlay" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.55); z-index:9999; align-items:center; justify-content:center;">
     <div style="background:var(--card); padding:24px 32px; border-radius:16px; text-align:center; max-width:320px; box-shadow:0 20px 40px rgba(0,0,0,0.4);">
       <div id="gameResultTitle" style="font-size:24px; font-weight:800; margin-bottom:8px;"></div>
@@ -834,8 +840,10 @@ async function loadGame(){
     if (currentGame && (newGame.moves||[]).length > prevMoveCount) {
       await animateNewMove(newGame);
     }
+    const wasPending = currentGame && currentGame.status === 'pending';
     currentGame = newGame;
     const scEl=$('gameSpectators'); if(scEl) scEl.textContent='Spectators: '+(currentGame.spectatorCount||0);
+    if (wasPending && newGame.status === 'active') showJoinEffect();
     const onEl=$('openingName'); if(onEl){ const on=getOpeningName(currentGame.moves||[]); onEl.textContent = on ? ('Opening: '+on) : ''; }
     const START_FEN = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
     if (mySide === 'spectate') {
@@ -1756,6 +1764,28 @@ async function loadLastGameIntoAnalysis(){
   } catch(e){ console.error(e); }
 }
 
+
+function showJoinEffect(){
+  if(!soundEnabled) {}
+  const o=$('gameJoinOverlay'); if(!o) return;
+  o.style.display='flex';
+  launchConfettiColors(['#facc15','#22c55e','#3b82f6','#a855f7','#f472b6','#f97316'], 90);
+  if (soundEnabled) { beep(523,0.1,'square'); setTimeout(()=>beep(659,0.1,'square'),100); setTimeout(()=>beep(784,0.15,'square'),200); }
+  setTimeout(()=>{ if(o) o.style.display='none'; }, 2200);
+}
+function launchConfettiColors(colors,count){
+  for(let i=0;i<count;i++){
+    const el=document.createElement('div');
+    el.className='confetti-dot';
+    el.style.left = (20 + Math.random()*60) + 'vw';
+    el.style.top = (20 + Math.random()*20) + 'vh';
+    el.style.background = colors[Math.floor(Math.random()*colors.length)];
+    el.style.setProperty('--dx', (Math.random()*280 - 140) + 'px');
+    el.style.setProperty('--dy', (-60 - Math.random()*240) + 'px');
+    document.body.appendChild(el);
+    setTimeout(()=>{ if(el.parentNode) el.parentNode.removeChild(el); }, 1100);
+  }
+}
 // init
 if(adminToken){ $('adminLogin').style.display='none'; $('adminPanel').classList.add('open'); }
 applyTheme();
