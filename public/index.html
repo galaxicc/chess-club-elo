@@ -72,6 +72,7 @@
   .square.legal::after { content:''; width:12px; height:12px; border-radius:50%; background:rgba(0,0,0,0.25); }
   .square.legal-capture { box-shadow: inset 0 0 0 4px rgba(239,68,68,0.5); }
   .piece { width:82%; height:82%; pointer-events:none; }
+  .flying-piece { position:absolute; z-index:20; pointer-events:none; transition: transform .18s ease-out, opacity .18s ease-out; }
   .players-list { display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; }
   .welcome-name { font-weight:800; font-size:20px; background: linear-gradient(90deg,#ff595e,#ffca3a,#8ac926,#1982c4,#6a4c93,#ff595e); background-size:300% 300%; -webkit-background-clip:text; background-clip:text; color:transparent; animation: rainbowText 3s linear infinite; }
   .star { display:inline-block; margin:0 2px; animation: twinkle 1.4s ease-in-out infinite alternate; }
@@ -710,7 +711,12 @@ async function loadGamesList(){
 async function loadGame(){
   if(!currentGameId) return;
   try {
-    currentGame = await api('/api/games/'+currentGameId);
+    const prevMoveCount = currentGame ? (currentGame.moves||[]).length : 0;
+    const newGame = await api('/api/games/'+currentGameId);
+    if (currentGame && (newGame.moves||[]).length > prevMoveCount) {
+      await animateNewMove(newGame);
+    }
+    currentGame = newGame;
     const scEl=$('gameSpectators'); if(scEl) scEl.textContent='Spectators: '+(currentGame.spectatorCount||0);
     const START_FEN = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
     if (mySide === 'spectate') {
@@ -1073,6 +1079,53 @@ function downloadPGN(id){
 let currentTheme = localStorage.getItem('theme') || 'dark';
 function applyTheme(){ document.body.classList.toggle('light', currentTheme==='light'); const b=$('themeToggle'); if(b) b.textContent = currentTheme==='dark' ? 'Light mode' : 'Dark mode'; }
 function toggleTheme(){ currentTheme = currentTheme==='dark' ? 'light' : 'dark'; localStorage.setItem('theme', currentTheme); applyTheme(); }
+
+
+// --- move animation helpers ---
+async function animateNewMove(game){
+  const moves = game.moves || [];
+  if(!moves.length) return;
+  let lastMove = null;
+  try {
+    const C = await ensureChess();
+    const tmp = new C();
+    for(let i=0;i<moves.length;i++){
+      const m = tmp.move(moves[i]);
+      if(i === moves.length-1) lastMove = m;
+    }
+  } catch(e){ return; }
+  if(!lastMove || !lastMove.from || !lastMove.to || lastMove.from === lastMove.to) return;
+  await animatePieceSlide(lastMove.from, lastMove.to, lastMove.color, lastMove.piece, !!lastMove.captured);
+}
+function animatePieceSlide(from,to,color,pieceType,isCapture){
+  return new Promise((resolve)=>{
+    const boardEl=$('board');
+    if(!boardEl){ resolve(); return; }
+    const fromEl=boardEl.querySelector(`[data-square="${from}"]`);
+    const toEl=boardEl.querySelector(`[data-square="${to}"]`);
+    if(!fromEl||!toEl){ resolve(); return; }
+    const boardRect=boardEl.getBoundingClientRect();
+    const fromRect=fromEl.getBoundingClientRect();
+    const toRect=toEl.getBoundingClientRect();
+    const size=Math.min(fromRect.width,toRect.width)*0.82;
+    const img=document.createElement('img');
+    img.className='flying-piece';
+    img.src=`https://raw.githubusercontent.com/lichess-org/lila/master/public/piece/cburnett/${color}${String(pieceType).toUpperCase()}.svg`;
+    img.style.width=size+'px';
+    img.style.height=size+'px';
+    img.style.left=(fromRect.left-boardRect.left + (fromRect.width-size)/2)+'px';
+    img.style.top=(fromRect.top-boardRect.top + (fromRect.height-size)/2)+'px';
+    img.style.transform='translate(0,0)';
+    boardEl.style.position='relative';
+    boardEl.appendChild(img);
+    const targetPiece=toEl.querySelector('.piece');
+    if (targetPiece) { targetPiece.style.transition='opacity .15s'; targetPiece.style.opacity='0.35'; }
+    const dx=toRect.left-fromRect.left;
+    const dy=toRect.top-fromRect.top;
+    requestAnimationFrame(()=>{ img.style.transform=`translate(${dx}px,${dy}px)`; });
+    setTimeout(()=>{ img.remove(); if(targetPiece){ targetPiece.style.opacity=''; targetPiece.style.transition=''; } resolve(); },200);
+  });
+}
 
 // init
 if(adminToken){ $('adminLogin').style.display='none'; $('adminPanel').classList.add('open'); }
