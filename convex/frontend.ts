@@ -1717,7 +1717,7 @@ async function makeAiMove(){
   } else if (aiGame.level==='difficult'){
     aiDebug = { engine:'Internal minimax', depth:0, nodes:0, pv:null, bestmove:null };
     try {
-      const res = findBestMove(chess, 5);
+      const res = findBestMove(chess, 4);
       if (res && res.move) {
         chosen = res.move;
         aiDebug.engine = 'Internal minimax';
