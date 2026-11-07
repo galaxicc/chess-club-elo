@@ -1422,6 +1422,105 @@ function getOpeningName(moves){
 
 
 // --- Play vs AI (local) ---
+
+function evaluateBoard(chess) {
+  const pieceValues = { p: 100, n: 320, b: 330, r: 500, q: 900, k: 20000 };
+  const pawnTable = [0, 0, 0, 0, 0, 0, 0, 0, 50, 50, 50, 50, 50, 50, 50, 50, 10, 10, 20, 30, 30, 20, 10, 10, 5, 5, 10, 25, 25, 10, 5, 5, 0, 0, 0, 20, 20, 0, 0, 0, 5, -5, -10, 0, 0, -10, -5, 5, 5, 10, 10, -20, -20, 10, 10, 5, 0, 0, 0, 0, 0, 0, 0, 0];
+  const knightTable = [-50, -40, -30, -30, -30, -30, -40, -50, -40, -20, 0, 0, 0, 0, -20, -40, -30, 0, 10, 15, 15, 10, 0, -30, -30, 5, 15, 20, 20, 15, 5, -30, -30, 0, 15, 20, 20, 15, 0, -30, -30, 5, 10, 15, 15, 10, 5, -30, -40, -20, 0, 5, 5, 0, -20, -40, -50, -40, -30, -30, -30, -30, -40, -50];
+  const bishopTable = [-20, -10, -10, -10, -10, -10, -10, -20, -10, 0, 0, 0, 0, 0, 0, -10, -10, 0, 5, 10, 10, 5, 0, -10, -10, 5, 5, 10, 10, 5, 5, -10, -10, 0, 10, 10, 10, 10, 0, -10, -10, 5, 0, 0, 0, 0, 5, -10, -10, 0, 0, 0, 0, 0, 0, -10, -20, -10, -10, -10, -10, -10, -10, -20];
+  const rookTable = [0, 0, 0, 0, 0, 0, 0, 0, 5, 10, 10, 10, 10, 10, 10, 5, -5, 0, 0, 0, 0, 0, 0, -5, -5, 0, 0, 0, 0, 0, 0, -5, -5, 0, 0, 0, 0, 0, 0, -5, -5, 0, 0, 0, 0, 0, 0, -5, 0, 0, 0, 5, 5, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+  const queenTable = [-20, -10, -10, -5, -5, -10, -10, -20, -10, 0, 0, 0, 0, 0, 0, -10, -10, 0, 5, 5, 5, 5, 0, -10, -5, 0, 5, 5, 5, 5, 0, -5, 0, 0, 5, 5, 5, 5, 0, -5, -10, 5, 5, 5, 5, 5, 0, -10, -10, 0, 5, 0, 0, 0, 0, -10, -20, -10, -10, -5, -5, -10, -10, -20];
+  
+  const tables = { p: pawnTable, n: knightTable, b: bishopTable, r: rookTable, q: queenTable };
+  let score = 0;
+  const b = chess.board();
+  for (let r = 0; r < 8; r++) {
+    for (let c = 0; c < 8; c++) {
+      const piece = b[r][c];
+      if (piece) {
+        let val = pieceValues[piece.type];
+        if (piece.type !== 'k') {
+          const idx = piece.color === 'w' ? r * 8 + c : (7 - r) * 8 + (7 - c);
+          if (tables[piece.type]) val += tables[piece.type][idx];
+        }
+        score += piece.color === 'w' ? val : -val;
+      }
+    }
+  }
+  // Mobility
+  const mobility = chess.moves().length;
+  score += chess.turn() === 'w' ? mobility * 2 : -mobility * 2;
+  return score;
+}
+
+let minimaxNodes = 0;
+function minimax(chess, depth, alpha, beta, isMaximizing) {
+  minimaxNodes++;
+  if (depth === 0) return evaluateBoard(chess);
+  const moves = chess.moves({ verbose: true });
+  if (chess.isCheckmate()) return isMaximizing ? -999999 : 999999;
+  if (chess.isDraw()) return 0;
+  if (moves.length === 0) return 0; // stalemate
+  
+  moves.sort((a, b) => {
+    const aCap = a.flags.includes('c') ? 1 : 0;
+    const bCap = b.flags.includes('c') ? 1 : 0;
+    return bCap - aCap;
+  });
+
+  if (isMaximizing) {
+    let maxEval = -Infinity;
+    for (const move of moves) {
+      chess.move(move);
+      const ev = minimax(chess, depth - 1, alpha, beta, false);
+      chess.undo();
+      maxEval = Math.max(maxEval, ev);
+      alpha = Math.max(alpha, ev);
+      if (beta <= alpha) break;
+    }
+    return maxEval;
+  } else {
+    let minEval = Infinity;
+    for (const move of moves) {
+      chess.move(move);
+      const ev = minimax(chess, depth - 1, alpha, beta, true);
+      chess.undo();
+      minEval = Math.min(minEval, ev);
+      beta = Math.min(beta, ev);
+      if (beta <= alpha) break;
+    }
+    return minEval;
+  }
+}
+
+function findBestMove(chess, depth) {
+  minimaxNodes = 0;
+  const moves = chess.moves({ verbose: true });
+  if (moves.length === 0) return null;
+  
+  const isMaximizing = chess.turn() === 'w';
+  let bestMove = null;
+  let bestEval = isMaximizing ? -Infinity : Infinity;
+  
+  moves.sort((a, b) => {
+    const aCap = a.flags.includes('c') ? 1 : 0;
+    const bCap = b.flags.includes('c') ? 1 : 0;
+    return bCap - aCap;
+  });
+
+  for (const move of moves) {
+    chess.move(move);
+    const ev = minimax(chess, depth - 1, -Infinity, Infinity, !isMaximizing);
+    chess.undo();
+    if (isMaximizing) {
+      if (ev > bestEval) { bestEval = ev; bestMove = move; }
+    } else {
+      if (ev < bestEval) { bestEval = ev; bestMove = move; }
+    }
+  }
+  return { move: bestMove, nodes: minimaxNodes };
+}
+
 let aiGame = null;
 let aiDebug = { engine:'idle', depth:null, nodes:null, pv:null, bestmove:null };
 let aiPointerStart = null;
@@ -1591,33 +1690,18 @@ async function makeAiMove(){
     chosen=moves[Math.floor(Math.random()*moves.length)];
     aiDebug = { engine:'Random legal (beginner)', depth:1, nodes: moves.length, pv:null, bestmove: chosen.san };
   } else if (aiGame.level==='difficult'){
-    aiDebug = { engine:'Stockfish.js (UCI)', depth:null, nodes:null, pv:null, bestmove:null };
-    // Try strong Stockfish (UCI) first
+    aiDebug = { engine:'Internal minimax', depth:3, nodes:0, pv:null, bestmove:null };
     try {
-      const uci = await getStockfishMove(chess.fen());
-      if (uci && uci.length >= 4) {
-        chosen = moves.find(m => m.from === uci.slice(0,2).toLowerCase() && m.to === uci.slice(2,4).toLowerCase());
-        if (chosen && uci[4]) chosen.promotion = uci[4];
+      const bestRes = findBestMove(chess, 3);
+      if (bestRes && bestRes.move) {
+        chosen = bestRes.move;
+        aiDebug.engine = 'Internal minimax';
+        aiDebug.depth = 3;
+        aiDebug.nodes = bestRes.nodes;
       }
-    } catch(e){ console.error('stockfish failed:', e); }
-    // Then fallback to js-chess-engine
+    } catch(e){ console.error('minimax failed:', e); }
     if (!chosen) {
-      aiDebug.engine = 'js-chess-engine (fallback)';
-      try {
-        const mod = await ensureJsChess();
-        if (mod && mod.Game) {
-          const gameObj = new mod.Game(chess.fen());
-          const result = gameObj.ai({ level: 5 });
-          const entries = result && result.move ? Object.entries(result.move) : [];
-          if (entries.length) {
-            const [from, to] = entries[0];
-            chosen = moves.find(m => m.from === String(from).toLowerCase() && m.to === String(to).toLowerCase());
-          }
-        }
-      } catch(e){ console.error('js-chess-engine failed:', e); }
-    }
-    if (!chosen) {
-      // fallback to greedy intermediate
+      // fallback to intermediate
       let best=-Infinity;
       const scored=[];
       for(const m of moves){
@@ -1629,6 +1713,7 @@ async function makeAiMove(){
       }
       const cands=scored.filter(s=>s.v>=best-0.01);
       chosen=cands[Math.floor(Math.random()*cands.length)].m;
+      aiDebug.engine = 'Greedy fallback';
     }
   } else {
     let best=-Infinity;
