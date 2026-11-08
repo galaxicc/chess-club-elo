@@ -16,7 +16,8 @@
   header { background: linear-gradient(90deg, rgba(56,189,248,0.08), transparent); }
   body.light .card { border-color: rgba(15,23,42,0.08); }
   header { padding:18px 20px; display:flex; align-items:center; gap:16px; border-bottom:1px solid #334155; }
-  header h1 { margin:0; font-size:20px; }
+  header h1 { margin:0; font-size:20px; cursor:pointer; }
+  header h1:hover { opacity:0.85; }
   .tabs { display:flex; flex-wrap:wrap; gap:8px; margin-left:auto; max-width:100%; }
   .tab { padding:8px 18px; border-radius:8px; cursor:pointer; background:#334155; border:none; color:#e2e8f0; font-weight:600; }
   .tab.active { background:var(--accent); color:#0f172a; }
@@ -103,7 +104,7 @@
 </head>
 <body>
 <header>
-  <h1>♟ Chess Club ELO</h1>
+  <h1 onclick="goHome()">♟ Chess Club ELO</h1>
   <div class="tabs" id="tabsBar">
     <button class="ghost" onclick="refreshAll()">Refresh</button>
   </div>
@@ -2048,6 +2049,13 @@ async function ensureJsChess(){
   }
 }
 
+function goHome(){
+  try { closeGame(); } catch(e){}
+  try { closeProfile(); } catch(e){}
+  const o=$('gameResultOverlay'); if(o) o.style.display='none';
+  const j=$('gameJoinOverlay'); if(j) j.style.display='none';
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
 // init
 if(adminToken){ $('adminLogin').style.display='none'; $('adminPanel').classList.add('open'); }
 applyTheme();
